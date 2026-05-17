@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.db import db
 from apps.api.models import AuditLog, NotificationChannel
-from apps.api.routes.auth import get_current_user
+from apps.api.routes.auth import require_scope
 from apps.api.schemas.channel import (
     ChannelCreate,
     ChannelOut,
@@ -117,7 +117,7 @@ def _to_out(channel: NotificationChannel, *, reveal_config: bool) -> ChannelOut:
 
 @router.get("", response_model=dict[str, Any])
 async def list_channels(
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:read")),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -157,7 +157,7 @@ async def list_channels(
 async def create_channel(
     body: ChannelCreate,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> ChannelOut:
     _validate_url_if_present(body.type, body.config)
 
@@ -189,7 +189,7 @@ async def create_channel(
 @router.get("/{channel_id}", response_model=ChannelOut)
 async def get_channel(
     channel_id: uuid.UUID,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:read")),
 ) -> ChannelOut:
     async with db.session() as session:
         channel = await _load_channel_or_404(
@@ -203,7 +203,7 @@ async def update_channel(
     channel_id: uuid.UUID,
     body: ChannelUpdate,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> ChannelOut:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -245,7 +245,7 @@ async def update_channel(
 async def delete_channel(
     channel_id: uuid.UUID,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> None:
     async with db.session() as session:
         channel = await _load_channel_or_404(

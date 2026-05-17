@@ -40,7 +40,16 @@ class AuthError(Exception):
 
 @dataclass(frozen=True)
 class AuthedUser:
-    """Resolved Whycron identity for a verified Supabase JWT."""
+    """Resolved Whycron identity for an authenticated request.
+
+    Two authentication paths produce this object:
+
+    - **Supabase JWT** (dashboard) — ``auth_method='jwt'``, ``scopes=None``
+      means "all scopes" (the human owner of the account).
+    - **Whycron API key** (programmatic) — ``auth_method='api_key'`` with
+      ``scopes`` set to the key's exact granted scopes. Scope-gated routes
+      check this list; routes without a scope gate accept either method.
+    """
 
     id: uuid.UUID
     organization_id: uuid.UUID
@@ -48,6 +57,9 @@ class AuthedUser:
     email: str
     name: str | None
     role: str
+    auth_method: str = "jwt"
+    scopes: tuple[str, ...] | None = None
+    api_key_id: uuid.UUID | None = None
 
 
 # ── JWT verification ─────────────────────────────────────────────────────────

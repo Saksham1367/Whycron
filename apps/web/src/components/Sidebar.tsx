@@ -22,6 +22,7 @@ const WORKSPACE_NAV: NavItem[] = [
 
 const ACCOUNT_NAV: NavItem[] = [
   { id: "account", label: "Account", icon: "person", path: "/account" },
+  { id: "api-keys", label: "API keys", icon: "vpn_key", path: "/api-keys" },
 ];
 
 export function Sidebar({ orgName }: { orgName: string }) {

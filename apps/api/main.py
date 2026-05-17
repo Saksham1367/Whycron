@@ -21,7 +21,16 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from apps.api.config import settings
 from apps.api.db import db
 from apps.api.redis_client import redis_client
-from apps.api.routes import account, auth, billing, channels, monitors, ping, runs
+from apps.api.routes import (
+    account,
+    api_keys,
+    auth,
+    billing,
+    channels,
+    monitors,
+    ping,
+    runs,
+)
 
 
 def _configure_logging() -> None:
@@ -91,7 +100,7 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Whycron-API-Key"],
 )
 
 app.include_router(ping.router)
@@ -101,6 +110,7 @@ app.include_router(runs.router)
 app.include_router(channels.router)
 app.include_router(account.router)
 app.include_router(billing.router)
+app.include_router(api_keys.router)
 
 
 @app.get("/health", tags=["meta"])

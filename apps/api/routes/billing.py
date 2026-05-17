@@ -15,7 +15,7 @@ from sqlalchemy import select
 from apps.api.config import settings
 from apps.api.db import db
 from apps.api.models import Organization
-from apps.api.routes.auth import get_current_user
+from apps.api.routes.auth import require_scope
 from apps.api.schemas.billing import CheckoutCreate, CheckoutOut, PortalOut
 from apps.api.services.auth import AuthedUser
 from apps.api.services.billing import (
@@ -105,7 +105,7 @@ async def polar_webhook(request: Request) -> dict[str, str]:
 @router.post("/checkout", response_model=CheckoutOut)
 async def start_checkout(
     body: CheckoutCreate,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("admin")),
 ) -> CheckoutOut:
     product_id = (
         settings.polar_product_pro_id
@@ -150,7 +150,7 @@ async def start_checkout(
 
 @router.get("/portal", response_model=PortalOut)
 async def open_portal(
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("admin")),
 ) -> PortalOut:
     async with db.session() as session:
         org = (
@@ -186,7 +186,7 @@ async def open_portal(
 # render upgrade copy without re-deriving the prices client-side.
 @router.get("/tiers", response_model=dict[str, Any])
 async def tier_info(
-    _auth: AuthedUser = Depends(get_current_user),
+    _auth: AuthedUser = Depends(require_scope("admin")),
 ) -> dict[str, Any]:
     return {
         "tiers": [

@@ -215,4 +215,41 @@ export const api = {
 
   openPortal: (): Promise<{ portal_url: string }> =>
     request("/api/v1/billing/portal"),
+
+  // ── API keys ────────────────────────────────────────────────────────────
+  listApiKeys: (): Promise<ApiKey[]> => request("/api/v1/api-keys"),
+
+  createApiKey: (body: {
+    name: string;
+    scopes: ApiKeyScope[];
+    expires_at?: string | null;
+  }): Promise<ApiKeyCreated> =>
+    request("/api/v1/api-keys", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokeApiKey: (id: string): Promise<null> =>
+    request(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
 };
+
+export type ApiKeyScope =
+  | "monitors:read"
+  | "monitors:write"
+  | "runs:read"
+  | "admin";
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: ApiKeyScope[];
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  plaintext: string;
+}

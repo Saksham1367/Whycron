@@ -177,6 +177,7 @@ async def authed_user_factory(
     from apps.api.main import app
     from apps.api.models import (
         AIExplanation,
+        APIKey,
         AuditLog,
         Monitor,
         NotificationChannel,
@@ -268,6 +269,9 @@ async def authed_user_factory(
             await s.execute(delete(Run).where(Run.organization_id == org_id))
             await s.execute(
                 delete(Monitor).where(Monitor.organization_id == org_id)
+            )
+            await s.execute(
+                delete(APIKey).where(APIKey.organization_id == org_id)
             )
             await s.execute(
                 delete(User).where(User.organization_id == org_id)

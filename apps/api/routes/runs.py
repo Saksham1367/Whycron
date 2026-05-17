@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.db import db
 from apps.api.models import AIExplanation, Run
-from apps.api.routes.auth import get_current_user
+from apps.api.routes.auth import require_scope
 from apps.api.schemas.run import (
     AIExplanationOut,
     FeedbackBody,
@@ -50,7 +50,7 @@ async def _load_run_or_404(
 
 @router.get("", response_model=dict[str, Any])
 async def list_runs(
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("runs:read")),
     monitor_id: uuid.UUID | None = Query(default=None),
     state: str | None = Query(default=None),
     since: datetime | None = Query(default=None),
@@ -90,7 +90,7 @@ async def list_runs(
 @router.get("/{run_id}", response_model=RunDetail)
 async def get_run(
     run_id: uuid.UUID,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("runs:read")),
 ) -> RunDetail:
     async with db.session() as session:
         run = await _load_run_or_404(session, run_id, auth.organization_id)
@@ -116,7 +116,7 @@ async def get_run(
 async def record_feedback(
     run_id: uuid.UUID,
     body: FeedbackBody,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("runs:read")),
 ) -> None:
     async with db.session() as session:
         # 404 if the run isn't ours.

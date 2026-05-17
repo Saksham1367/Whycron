@@ -3,6 +3,7 @@ import { AuthProvider } from "@/auth/AuthProvider";
 import { RequireAuth } from "@/auth/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { AccountScreen } from "@/screens/AccountScreen";
+import { ApiKeysScreen } from "@/screens/ApiKeysScreen";
 import { AuthCallbackScreen } from "@/screens/AuthCallbackScreen";
 import { ChannelsScreen } from "@/screens/ChannelsScreen";
 import { CreateMonitorScreen } from "@/screens/CreateMonitorScreen";
@@ -39,6 +40,7 @@ export function App() {
             <Route path="runs/:id" element={<RunDetailScreen />} />
             <Route path="channels" element={<ChannelsScreen />} />
             <Route path="account" element={<AccountScreen />} />
+            <Route path="api-keys" element={<ApiKeysScreen />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

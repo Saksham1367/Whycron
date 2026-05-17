@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.db import db
 from apps.api.models import AuditLog, Monitor, Run
-from apps.api.routes.auth import get_current_user
+from apps.api.routes.auth import require_scope
 from apps.api.schemas.monitor import (
     MonitorCreate,
     MonitorOut,
@@ -97,7 +97,7 @@ def _audit(
 
 @router.get("", response_model=dict[str, Any])
 async def list_monitors(
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:read")),
     status_filter: str | None = Query(default=None, alias="status"),
     tag: str | None = Query(default=None),
     search: str | None = Query(default=None, max_length=200),
@@ -144,7 +144,7 @@ async def list_monitors(
 async def create_monitor(
     body: MonitorCreate,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> MonitorOut:
     async with db.session() as session:
         # Tier-limit enforcement.
@@ -212,7 +212,7 @@ async def create_monitor(
 @router.get("/{monitor_id}", response_model=dict[str, Any])
 async def get_monitor(
     monitor_id: uuid.UUID,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:read")),
     runs_limit: int = Query(default=10, ge=1, le=100),
 ) -> dict[str, Any]:
     async with db.session() as session:
@@ -249,7 +249,7 @@ async def update_monitor(
     monitor_id: uuid.UUID,
     body: MonitorUpdate,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> MonitorOut:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -296,7 +296,7 @@ async def update_monitor(
 async def delete_monitor(
     monitor_id: uuid.UUID,
     request: Request,
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("monitors:write")),
 ) -> None:
     async with db.session() as session:
         monitor = await _load_monitor_or_404(

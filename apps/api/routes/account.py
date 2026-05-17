@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 
 from apps.api.db import db
 from apps.api.models import AIExplanation, Monitor, Organization, User
-from apps.api.routes.auth import get_current_user
+from apps.api.routes.auth import require_scope
 from apps.api.schemas.account import AccountOut, UsageBlock
 from apps.api.services.auth import AuthedUser
 from apps.api.services.tier_limits import (
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/v1/account", tags=["account"])
 
 @router.get("", response_model=AccountOut)
 async def get_account(
-    auth: AuthedUser = Depends(get_current_user),
+    auth: AuthedUser = Depends(require_scope("admin")),
 ) -> AccountOut:
     async with db.session() as session:
         org = (
