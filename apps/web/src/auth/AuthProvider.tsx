@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { identify, resetIdentity } from "@/lib/analytics";
 
 interface AuthState {
   session: Session | null;
@@ -23,10 +24,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data.session);
+      if (data.session?.user?.id) {
+        identify(data.session.user.id, {
+          email: data.session.user.email ?? undefined,
+        });
+      }
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next);
+      if (next?.user?.id) {
+        identify(next.user.id, { email: next.user.email ?? undefined });
+      } else if (event === "SIGNED_OUT") {
+        resetIdentity();
+      }
     });
     return () => {
       mounted = false;

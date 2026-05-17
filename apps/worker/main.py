@@ -24,10 +24,12 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+import sentry_sdk
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from redis import Redis
 from rq import SimpleWorker
+from sentry_sdk.integrations.threading import ThreadingIntegration
 
 from apps.api.config import settings
 from apps.worker.schedule_scanner import scan_schedules
@@ -50,6 +52,22 @@ def _configure_logging() -> None:
         wrapper_class=structlog.make_filtering_bound_logger(level),
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
+    )
+
+
+def _configure_sentry() -> None:
+    """Initialize Sentry for the worker process. No-op when DSN absent
+    (e.g., self-host without observability configured)."""
+    if not settings.sentry_worker_dsn:
+        return
+    sentry_sdk.init(
+        dsn=settings.sentry_worker_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=0.1,
+        # The worker spawns the APScheduler in a thread; this integration
+        # captures unhandled exceptions there too.
+        integrations=[ThreadingIntegration(propagate_hub=True)],
+        send_default_pii=False,
     )
 
 
@@ -81,11 +99,13 @@ def _run_scheduler_in_thread() -> None:
 
 def main() -> None:
     _configure_logging()
+    _configure_sentry()
     log = structlog.get_logger("whycron.worker")
     log.info(
         "worker_starting",
         queues=[ANALYZE_QUEUE, NOTIFY_QUEUE],
         scan_interval_seconds=SCAN_INTERVAL_SECONDS,
+        sentry_enabled=bool(settings.sentry_worker_dsn),
     )
 
     threading.Thread(

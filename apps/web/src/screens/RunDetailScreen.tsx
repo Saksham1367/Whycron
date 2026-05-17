@@ -8,6 +8,7 @@ import { SurfaceCard } from "@/components/SurfaceCard";
 import { Topbar } from "@/components/Topbar";
 import type { ShellContext } from "@/components/AppShell";
 import { api } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { fmtAbsolute, fmtCostMicroUSD, fmtDuration } from "@/lib/format";
 import type { Run } from "@/lib/types";
 
@@ -23,7 +24,17 @@ export function RunDetailScreen() {
     let mounted = true;
     api
       .getRun(id)
-      .then((r) => mounted && setRun(r))
+      .then((r) => {
+        if (!mounted) return;
+        setRun(r);
+        if (r.explanation) {
+          track("ai_explanation_viewed", {
+            run_state: r.state,
+            confidence: r.explanation.confidence,
+            model: r.explanation.model,
+          });
+        }
+      })
       .catch((e: Error) => mounted && setError(e.message));
     return () => {
       mounted = false;

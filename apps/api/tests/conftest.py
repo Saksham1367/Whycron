@@ -80,6 +80,17 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 # ── HTTP integration fixtures ────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _disable_analytics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never fire real PostHog or Sentry traffic. PostHog's startup
+    probe can stall the asyncio loop; Sentry's httpx AsyncTransport leaves
+    a dangling ``AsyncClient.aclose()`` task on the pytest event loop after
+    teardown, producing noisy "Event loop is closed" warnings. Production
+    runs use the real keys from .env."""
+    monkeypatch.setattr("apps.api.config.settings.posthog_api_key", "")
+    monkeypatch.setattr("apps.api.config.settings.sentry_dsn", "")
+
+
 @pytest_asyncio.fixture
 async def connected_db() -> AsyncIterator[None]:
     """Connect the global ``db`` and ``redis_client`` singletons for tests

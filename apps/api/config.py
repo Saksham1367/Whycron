@@ -70,12 +70,19 @@ class Settings(BaseSettings):
     polar_api_base: str = "https://sandbox-api.polar.sh"
 
     # ── Error tracking (Sentry) ──────────────────────────────────────────────
+    # Separate DSNs per service so issues are grouped by where they fired.
+    # ``sentry_dsn`` is the API's. ``sentry_worker_dsn`` is the worker's.
+    # The frontend's DSN lives in apps/web/.env as ``VITE_SENTRY_DSN``.
     sentry_dsn: str = ""
+    sentry_worker_dsn: str = ""
     sentry_environment: str = "development"
 
     # ── Analytics (PostHog) ──────────────────────────────────────────────────
+    # ``posthog_api_key`` is the project's public key (same value used by
+    # the frontend as ``VITE_POSTHOG_KEY``). Server-side capture is opt-in
+    # per event; we keep it minimal to avoid sending sensitive payloads.
     posthog_api_key: str = ""
-    posthog_host: str = "https://app.posthog.com"
+    posthog_host: str = "https://us.i.posthog.com"
 
     # ── Security ─────────────────────────────────────────────────────────────
     webhook_signing_secret: str = ""

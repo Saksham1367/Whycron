@@ -6,6 +6,7 @@ import { SurfaceCard } from "@/components/SurfaceCard";
 import { Topbar } from "@/components/Topbar";
 import type { ShellContext } from "@/components/AppShell";
 import { ApiError, api } from "@/lib/api";
+import { track } from "@/lib/analytics";
 
 export function AccountScreen() {
   const { account, onSignOut, reloadAccount } = useOutletContext<ShellContext>();
@@ -26,6 +27,7 @@ export function AccountScreen() {
   async function onUpgrade() {
     setBillingError(null);
     setBillingBusy(true);
+    track("upgrade_clicked", { tier: "pro" });
     try {
       const { checkout_url } = await api.startCheckout("pro");
       window.location.href = checkout_url;

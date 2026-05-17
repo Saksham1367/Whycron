@@ -5,7 +5,6 @@ import { CodeBlock } from "@/components/CodeBlock";
 import { Eyebrow } from "@/components/Eyebrow";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
-import { SymbolIcon } from "@/components/SymbolIcon";
 import { Topbar } from "@/components/Topbar";
 import type { ShellContext } from "@/components/AppShell";
 import { api } from "@/lib/api";

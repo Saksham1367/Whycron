@@ -24,6 +24,7 @@ from apps.api.schemas.monitor import (
     MonitorOut,
     MonitorUpdate,
 )
+from apps.api.services import analytics
 from apps.api.services.auth import AuthedUser
 from apps.api.services.tier_limits import (
     generate_ping_token,
@@ -191,6 +192,20 @@ async def create_monitor(
             )
         )
         await session.commit()
+
+        # Conversion-funnel signal: how many users get past their first
+        # monitor? Property values are stable identifiers + counts only —
+        # nothing user-typed (name, logs) flows to PostHog.
+        analytics.capture(
+            distinct_id=auth.id,
+            event="monitor_created",
+            properties={
+                "organization_id": str(auth.organization_id),
+                "tier": tier,
+                "schedule_type": body.schedule_type,
+            },
+        )
+
         return MonitorOut.model_validate(monitor)
 
 

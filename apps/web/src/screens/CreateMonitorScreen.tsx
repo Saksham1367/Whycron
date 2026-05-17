@@ -6,6 +6,7 @@ import { SurfaceCard } from "@/components/SurfaceCard";
 import { Topbar } from "@/components/Topbar";
 import type { ShellContext } from "@/components/AppShell";
 import { ApiError, api } from "@/lib/api";
+import { track } from "@/lib/analytics";
 
 export function CreateMonitorScreen() {
   const navigate = useNavigate();
@@ -37,6 +38,10 @@ export function CreateMonitorScreen() {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+      });
+      track("monitor_created", {
+        schedule_type: scheduleType,
+        timezone,
       });
       reloadAccount();
       navigate(`/monitors/${monitor.id}`);
