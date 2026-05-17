@@ -1,0 +1,165 @@
+/* =========================================================================
+   Whycron Design System — colors, type, radius, shadow tokens.
+   Source of truth: apps/web/src/styles/tokens.css + UI-UX/DESIGN.md.
+   Dark-first. Light-mode is not a supported product surface today.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@0..1');
+
+:root {
+  color-scheme: dark;
+
+  /* ── Surfaces ────────────────────────────────────────────────────────── */
+  --wc-bg: #10131a;            /* page background (Level 0) */
+  --wc-bg-deep: #0b0e15;       /* deep wells, pre/code blocks */
+  --wc-surface: #13171f;       /* default card body */
+  --wc-surface-2: #191d26;     /* sidebar, navbar (Level 1) */
+  --wc-surface-3: #222632;     /* popovers, modals (Level 2) */
+  --wc-surface-hover: #272c37; /* row hover */
+
+  --wc-border: #363b49;        /* default 1px stroke */
+  --wc-border-strong: #495067; /* emphasized boundary */
+
+  /* ── Text ────────────────────────────────────────────────────────────── */
+  --wc-text: #e1e2ec;          /* fg/1 — primary type */
+  --wc-text-soft: #c2c6d6;     /* fg/2 — secondary copy */
+  --wc-text-muted: #8f96ad;    /* fg/3 — captions, meta */
+
+  /* ── Primary (the only chromatic accent in product chrome) ───────────── */
+  --wc-primary: #adc6ff;        /* light primary, on dark surfaces */
+  --wc-primary-strong: #4d8eff; /* CTA fill, focus rings */
+  --wc-primary-ink: #0d1f47;    /* text on primary fill */
+
+  /* ── Status palette — every state token is paired with a soft fill. ──── */
+  --wc-success: #2ad39b;
+  --wc-success-soft: rgba(42, 211, 155, 0.12);
+  --wc-warning: #ffba3a;
+  --wc-warning-soft: rgba(255, 186, 58, 0.12);
+  --wc-danger:  #ff8a8a;
+  --wc-danger-soft:  rgba(255, 138, 138, 0.12);
+  --wc-paused:  #a2a9bb;
+  --wc-paused-soft:  rgba(162, 169, 187, 0.12);
+
+  /* ── Tertiary accent (used very sparingly, e.g. body radial glow). ──── */
+  --wc-tertiary: #ffb786;
+
+  /* ── Radii ───────────────────────────────────────────────────────────── */
+  --wc-radius-sm: 8px;   /* inputs, buttons, status pills (round capsules: 999px) */
+  --wc-radius-md: 14px;  /* surface cards */
+  --wc-radius-lg: 20px;  /* hero cards, large composed surfaces */
+  --wc-radius-pill: 999px;
+
+  /* ── Shadow / elevation. Borders do most of the work; shadows are subtle. */
+  --wc-shadow-sm: 0 8px 24px rgba(2, 6, 16, 0.22);
+  --wc-shadow-lg: 0 24px 80px rgba(3, 6, 14, 0.45);
+
+  /* ── Spacing (4px base unit) ─────────────────────────────────────────── */
+  --wc-space-1: 4px;
+  --wc-space-2: 8px;
+  --wc-space-3: 12px;
+  --wc-space-4: 16px;
+  --wc-space-5: 20px;
+  --wc-space-6: 24px;
+  --wc-space-8: 32px;
+  --wc-space-10: 40px;
+  --wc-space-12: 48px;
+  --wc-space-16: 64px;
+
+  /* ── Layout primitives ───────────────────────────────────────────────── */
+  --wc-sidebar-width: 240px;
+  --wc-container-max: 1440px;
+
+  /* ── Type families ───────────────────────────────────────────────────── */
+  --wc-font-body: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --wc-font-code: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --wc-font-icon: 'Material Symbols Outlined';
+
+  /* ── Background "atmosphere" — used on body and large hero canvases ──── */
+  --wc-page-glow:
+    radial-gradient(circle at top left, rgba(77, 142, 255, 0.12), transparent 32%),
+    radial-gradient(circle at top right, rgba(223, 116, 18, 0.08), transparent 28%);
+}
+
+/* =========================================================================
+   Semantic typography — these classes match what the product code actually
+   produces (clamp() on hero titles, sharp negative tracking, dense body).
+   ========================================================================= */
+
+.wc-display {
+  /* Landing hero — huge, clamped, very tight tracking. */
+  font: 800 clamp(3rem, 7vw, 5.4rem) / 0.94 var(--wc-font-body);
+  letter-spacing: -0.07em;
+  color: var(--wc-text);
+}
+
+.wc-h1 {
+  /* Screen titles in the product. */
+  font: 600 clamp(2rem, 4vw, 3.1rem) / 1.05 var(--wc-font-body);
+  letter-spacing: -0.04em;
+  color: var(--wc-text);
+}
+
+.wc-h2 {
+  font: 600 clamp(1.35rem, 3vw, 2.1rem) / 1.15 var(--wc-font-body);
+  letter-spacing: -0.04em;
+  color: var(--wc-text);
+}
+
+.wc-h3 {
+  font: 600 1.15rem / 1.3 var(--wc-font-body);
+  letter-spacing: -0.03em;
+  color: var(--wc-text);
+}
+
+.wc-body-lg { font: 400 1rem    / 1.55 var(--wc-font-body); color: var(--wc-text); }
+.wc-body    { font: 400 0.875rem / 1.55 var(--wc-font-body); color: var(--wc-text); }
+.wc-body-sm { font: 400 0.8rem  / 1.5  var(--wc-font-body); color: var(--wc-text-soft); }
+
+.wc-label-caps {
+  /* Section eyebrows above titles, table column headers in the sidebar. */
+  font: 700 0.72rem / 1.4 var(--wc-font-body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--wc-primary);
+}
+
+.wc-code {
+  font: 400 0.8125rem / 1.55 var(--wc-font-code);
+  color: var(--wc-text);
+}
+
+/* The product's distinctive failure-log block — red-tinted text on near-black. */
+.wc-code-block {
+  font-family: var(--wc-font-code);
+  border: 1px solid rgba(54, 59, 73, 0.9);
+  border-radius: 12px;
+  background: rgba(4, 7, 12, 0.96);
+  color: #f4b3b3;
+  padding: 1rem;
+}
+
+.wc-wordmark {
+  font: 800 1.95rem / 1 var(--wc-font-body);
+  letter-spacing: -0.05em;
+  color: var(--wc-text);
+}
+
+/* Material Symbols glyph helper — variation axes pinned to product defaults.
+   font-feature-settings: 'liga' is REQUIRED — without it, the font renders the
+   ligature names as literal text ("arrow_forward") instead of glyphs. */
+.wc-icon {
+  font-family: var(--wc-font-icon);
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'opsz' 20;
+  font-feature-settings: 'liga';
+  -webkit-font-feature-settings: 'liga';
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  user-select: none;
+}
+.wc-icon--filled { font-variation-settings: 'FILL' 1, 'wght' 500, 'opsz' 20; }

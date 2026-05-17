@@ -1,0 +1,44 @@
+# Local development stack — Postgres 16 + Redis 7.
+# Both services bind to 127.0.0.1 only; the credentials below are local-only
+# throwaways and must NOT be reused in any deployed environment.
+#
+# Production deployment uses managed Postgres and Redis (or co-located
+# instances on the DigitalOcean droplet). This file is for `uv run` workflows.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: whycron-postgres
+    environment:
+      POSTGRES_USER: whycron
+      POSTGRES_PASSWORD: whycron_local_dev
+      POSTGRES_DB: whycron
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whycron -d whycron"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: whycron-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

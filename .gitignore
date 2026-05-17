@@ -1,0 +1,62 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+
+# Local data
+postgres-data/
+redis-data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+*.tsbuildinfo
+
+# Personal planning / strategy docs — kept locally, never pushed to public repo
+/CLAUDE.md
+/CONTEXT.md
+/DECISIONS.md
+/ROADMAP.md
+
+# Design system reference — local-only working asset
+/Whycron Design System/

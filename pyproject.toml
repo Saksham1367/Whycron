@@ -1,0 +1,83 @@
+[project]
+name = "whycron"
+version = "0.1.0"
+description = "Cron monitoring that tells you why."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+
+# ── Shared runtime dependencies (used by both API and worker) ────────────────
+# Versions are floor-pinned here; uv.lock is the authoritative pin per
+# DECISIONS.md #17. To upgrade: `uv lock --upgrade-package <name>`.
+dependencies = [
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "redis[hiredis]>=5.2.0",
+    "structlog>=24.4.0",
+    "python-dotenv>=1.0.1",
+    "httpx>=0.27.0",
+]
+
+# ── Optional extras — install only what each deployment target needs ─────────
+# Local dev:    uv sync --all-extras
+# API image:    uv sync --extra api
+# Worker image: uv sync --extra worker
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sentry-sdk[fastapi]>=2.18.0",
+    "pyjwt[crypto]>=2.9.0",
+]
+worker = [
+    "rq>=2.0.0",
+    "apscheduler>=3.10.4",
+    "sentry-sdk>=2.18.0",
+    "anthropic>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+# Whycron is run from source — uv installs deps but does not build the
+# project itself as a wheel. Modules import via the `apps.` namespace from
+# the project root (which uvicorn / pytest / alembic add to sys.path).
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"apps/api/migrations/versions/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "."
+exclude = ["apps/api/migrations/versions"]
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*", "rq.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["apps"]
+addopts = "-ra --strict-markers"
