@@ -1,0 +1,686 @@
+{
+  "version": "v1",
+  "prompt_version": "v1",
+  "created": "2026-05-17",
+  "source_note": "Cases drafted by Claude Code from real-world failure patterns documented in Stack Overflow questions, GitHub Issues on popular tooling repos, vendor postmortems, and public incident reports. Each case mirrors a class of failure operators actually encounter — not invented from thin air. Reviewed by Saksham before being treated as ground truth (see memory: research-draft-review pattern).",
+  "categories": {
+    "db_backup": 5,
+    "etl": 4,
+    "email": 3,
+    "cleanup": 3,
+    "ml_training": 3,
+    "api_sync": 4,
+    "cron_misconfig": 2,
+    "infrastructure": 3,
+    "edge_cases": 3
+  },
+  "cases": [
+    {
+      "case_id": "db-backup-disk-full-001",
+      "category": "db_backup",
+      "input": {
+        "monitor_name": "Nightly PostgreSQL Backup",
+        "schedule": "0 2 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 107000,
+        "logs_failed": "2026-05-17T02:00:01Z INFO pg_dump: starting backup of database 'production'\n2026-05-17T02:00:14Z INFO pg_dump: dumping contents of table 'public.events'\n2026-05-17T02:01:42Z INFO pg_dump: dumping contents of table 'public.users'\npg_dump: error: could not write to output file: No space left on device\npg_dump: error: a worker process died unexpectedly",
+        "logs_last_success": "2026-05-16T02:00:01Z INFO pg_dump: starting backup of database 'production'\n2026-05-16T02:18:42Z INFO pg_dump: backup completed successfully (4.2 GB written to /backups/prod-2026-05-16.sql)"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because pg_dump ran out of disk space on the backup volume while writing the dump file.",
+        "explanation": "The backup process started normally and was midway through dumping the users table when the output file's filesystem returned ENOSPC. The previous successful run wrote 4.2 GB, suggesting the destination volume is sized close to a single backup's worth and didn't have headroom for retained history.",
+        "suggested_fix": "Free space on the backup volume by rotating or archiving older dumps, or expand the volume. Add a retention policy (e.g., keep the last 7 daily dumps) so this doesn't recur next month."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["pg_dump", "space"],
+        "must_not_contain": ["network", "credentials", "permission denied"]
+      }
+    },
+    {
+      "case_id": "db-backup-connection-refused-002",
+      "category": "db_backup",
+      "input": {
+        "monitor_name": "Replica Backup to S3",
+        "schedule": "0 4 * * *",
+        "timezone": "UTC",
+        "exit_code": 2,
+        "duration_ms": 9500,
+        "logs_failed": "2026-05-17T04:00:01Z INFO connecting to db-replica.[REDACTED:private_ip]:5432\npg_dump: error: connection to server at \"db-replica.internal\" (10.0.x.x), port 5432 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\npg_dump: error: aborted",
+        "logs_last_success": "2026-05-16T04:00:01Z INFO connecting to db-replica.internal:5432\n2026-05-16T04:07:13Z INFO pg_dump completed, uploaded 2.1 GB to s3://acme-backups/replica/2026-05-16.sql"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because pg_dump could not establish a TCP connection to the replica host db-replica.internal on port 5432.",
+        "explanation": "The connection was refused at the network layer, meaning either Postgres on the replica is not running, the listener is bound to a different interface, or a firewall blocked the connection between the backup host and the replica. The previous run completed in ~7 minutes against the same host, so this is a fresh outage, not a long-running misconfiguration.",
+        "suggested_fix": "Check whether the Postgres service is running on the replica (systemctl status postgresql), verify pg_hba.conf and the listen_addresses setting, and confirm no firewall rule was recently added between the backup host and the replica."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["connection", "5432"],
+        "must_not_contain": ["disk", "space", "memory"]
+      }
+    },
+    {
+      "case_id": "db-backup-mysql-lock-timeout-003",
+      "category": "db_backup",
+      "input": {
+        "monitor_name": "MySQL Hourly Snapshot",
+        "schedule": "0 * * * *",
+        "timezone": "UTC",
+        "exit_code": 2,
+        "duration_ms": 600000,
+        "logs_failed": "mysqldump: starting consistent snapshot\nmysqldump: Got error: 1205: \"Lock wait timeout exceeded; try restarting transaction\" when using LOCK TABLES\nmysqldump: error: failed to acquire metadata lock on table `orders.line_items`\nmysqldump: aborted after 600s",
+        "logs_last_success": "mysqldump: starting consistent snapshot\nmysqldump: writing data for orders.line_items (1.2M rows)\nmysqldump: backup completed in 142s"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because mysqldump could not acquire a metadata lock on the orders.line_items table within the configured timeout.",
+        "explanation": "Another long-running transaction is holding a lock on line_items, blocking mysqldump's lock-tables step. The job waited 600 seconds (the timeout) and gave up. The previous hourly run took only 142s, so the blocker is recent — likely a slow query or transaction started in the last hour.",
+        "suggested_fix": "Identify the blocking transaction with SHOW ENGINE INNODB STATUS or SELECT * FROM information_schema.innodb_trx ORDER BY trx_started, then kill it or wait for it to complete. Long term, consider using --single-transaction with mysqldump so InnoDB tables don't require table locks at all."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["lock", "mysqldump"],
+        "must_not_contain": ["disk full", "no space"]
+      }
+    },
+    {
+      "case_id": "db-backup-permission-denied-004",
+      "category": "db_backup",
+      "input": {
+        "monitor_name": "Backup Encrypt and Upload",
+        "schedule": "30 3 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 2400,
+        "logs_failed": "2026-05-17T03:30:02Z INFO running pg_dump | gpg --encrypt | aws s3 cp - s3://...\npg_dump: error: could not open output file \"/var/backups/prod.sql.tmp\": Permission denied\nfatal: backup failed before any data was written",
+        "logs_last_success": "2026-05-16T03:30:02Z INFO running pg_dump | gpg --encrypt | aws s3 cp - s3://...\n2026-05-16T03:34:11Z INFO encrypted 1.8 GB and uploaded successfully"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because pg_dump could not write its temporary output file at /var/backups/prod.sql.tmp due to insufficient filesystem permissions.",
+        "explanation": "The previous run succeeded against the same path, so this is a permissions regression — most likely the directory's owner, group, or mode was changed by a recent deployment, an OS upgrade, or a misconfigured Ansible/Chef run. The job exited before writing any data, so no partial dump was uploaded.",
+        "suggested_fix": "Check the current owner and mode of /var/backups (ls -la /var/backups), compare to the service account running the backup, and restore the expected permissions. Audit recent infrastructure changes that may have rewritten the directory's metadata."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["permission", "/var/backups"],
+        "must_not_contain": ["connection", "memory", "OOM"]
+      }
+    },
+    {
+      "case_id": "db-backup-connection-lost-005",
+      "category": "db_backup",
+      "input": {
+        "monitor_name": "Wal-G Full Backup",
+        "schedule": "0 1 * * 0",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 1800000,
+        "logs_failed": "INFO: 2026/05/17 01:00:01.123456 Doing full backup.\nINFO: 2026/05/17 01:00:02.789012 Walking ...\nINFO: 2026/05/17 01:24:33.456789 Compressed and uploaded 28 GB\nERROR: 2026/05/17 01:30:01.111111 connection to database lost: server closed the connection unexpectedly\n\tThis probably means the server terminated abnormally before or while processing the request.\nFATAL: full backup aborted at 30m without completing",
+        "logs_last_success": "INFO: 2026/05/10 01:00:01 Doing full backup.\nINFO: 2026/05/10 01:42:18 Compressed and uploaded 41 GB\nINFO: 2026/05/10 01:42:18 backup completed in 42m"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the database server closed the Wal-G replication connection unexpectedly 30 minutes into the full backup.",
+        "explanation": "Wal-G uploaded 28 GB successfully before the source database dropped the connection mid-stream. The previous weekly run uploaded 41 GB over 42 minutes against the same source, so this is a transient or load-induced disconnection — possibly the database server was restarted, a max_connections limit was hit, or a network device between Wal-G and the DB closed an idle-looking long-running connection.",
+        "suggested_fix": "Check the Postgres server log for an OOM-killer event, a restart, or a forced disconnect around 01:30 UTC. If the cluster is fronted by a connection pooler or load balancer, verify its idle-timeout is longer than the expected full-backup duration. Consider running Wal-G's backup against a dedicated replica to isolate it from production load."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["connection"],
+        "must_not_contain": ["disk full", "permission denied"]
+      }
+    },
+    {
+      "case_id": "etl-source-api-down-006",
+      "category": "etl",
+      "input": {
+        "monitor_name": "Stripe Reconciliation Sync",
+        "schedule": "*/30 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 60000,
+        "logs_failed": "2026-05-17T08:30:00Z INFO starting Stripe charges sync window 2026-05-17T08:00..08:30\n2026-05-17T08:30:31Z WARN HTTP 503 from api.stripe.com/v1/charges (attempt 1)\n2026-05-17T08:30:42Z WARN HTTP 503 from api.stripe.com/v1/charges (attempt 2 after backoff)\n2026-05-17T08:31:01Z ERROR HTTP 503 from api.stripe.com/v1/charges (attempt 3, giving up)\nERROR: 3 consecutive 5xx responses from Stripe API",
+        "logs_last_success": "2026-05-17T08:00:00Z INFO starting Stripe charges sync window 2026-05-17T07:30..08:00\n2026-05-17T08:00:14Z INFO reconciled 1,247 charges, 12 disputes, $42,381.50 settled"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because Stripe's API returned HTTP 503 (Service Unavailable) on all three retry attempts.",
+        "explanation": "This is upstream unavailability, not a defect in the sync job. The previous 30-minute window reconciled normally, indicating the integration itself is healthy. Three 503 responses in 60 seconds suggests Stripe is in a partial or full outage; status.stripe.com will likely confirm.",
+        "suggested_fix": "Check status.stripe.com for an active incident. The next scheduled run at 09:00 UTC will retry the same window; no manual action is required unless the outage persists more than one cycle. If your reconciliation tolerates eventual consistency, no data is lost."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["503", "Stripe"],
+        "must_not_contain": ["disk", "memory", "permission"]
+      }
+    },
+    {
+      "case_id": "etl-schema-mismatch-007",
+      "category": "etl",
+      "input": {
+        "monitor_name": "Shopify Orders ETL",
+        "schedule": "15 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 23000,
+        "logs_failed": "INFO  fetching orders since 2026-05-17T07:15Z\nINFO  received 412 orders from Shopify\nERROR psycopg2.errors.UndefinedColumn: column \"customer_locale\" of relation \"raw_orders\" does not exist\nLINE 1: INSERT INTO raw_orders (id, customer_id, customer_locale, ...\n                                            ^\nETL pipeline failed on row 1 of batch; rolled back",
+        "logs_last_success": "INFO  fetching orders since 2026-05-17T06:15Z\nINFO  received 389 orders from Shopify\nINFO  upserted 389 rows into raw_orders, 4 new customers, 0 errors"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the destination table raw_orders is missing the customer_locale column that the ETL is now trying to insert.",
+        "explanation": "Shopify's API response shape changed — likely a recent API version bump added the customer_locale field, and the ETL's SQL was updated to write it, but the corresponding ALTER TABLE migration hasn't been applied to the destination database. The previous hourly run wrote 389 rows successfully against the old schema.",
+        "suggested_fix": "Run the missing migration to add customer_locale (likely TEXT or VARCHAR) to raw_orders. Verify there is no other schema drift between the ETL's expected schema and the database. Long-term, add a CI check that runs the ETL's writes against a fresh-from-migrations test database."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["column", "customer_locale", "migration"],
+        "must_not_contain": ["network", "permission denied"]
+      }
+    },
+    {
+      "case_id": "etl-timeout-008",
+      "category": "etl",
+      "input": {
+        "monitor_name": "Daily Analytics Aggregation",
+        "schedule": "0 5 * * *",
+        "timezone": "UTC",
+        "exit_code": 124,
+        "duration_ms": 3600000,
+        "logs_failed": "2026-05-17T05:00:01Z INFO refreshing materialized view mv_daily_revenue\n2026-05-17T05:00:01Z INFO SQL: REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_revenue\n2026-05-17T06:00:01Z FATAL statement timeout exceeded (3600s)\nERROR: canceling statement due to statement timeout",
+        "logs_last_success": "2026-05-16T05:00:01Z INFO refreshing materialized view mv_daily_revenue\n2026-05-16T05:42:14Z INFO refresh completed (42m, 18.4M rows)"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the REFRESH MATERIALIZED VIEW for mv_daily_revenue exceeded the 3600s statement_timeout.",
+        "explanation": "The previous run took 42 minutes against 18.4M rows. Today's run hit the one-hour timeout, suggesting either the underlying tables grew faster than expected, the database is under heavier load slowing the refresh, or a new join condition or filter has made the view's query plan worse.",
+        "suggested_fix": "Run EXPLAIN ANALYZE on the view's query and compare to last week's plan to spot regressions. Check for newly missing indexes or stale statistics on the source tables. If the view is consistently approaching the timeout, raise statement_timeout for this job specifically or break the refresh into incremental chunks."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["timeout", "REFRESH"],
+        "must_not_contain": ["disk full", "network"]
+      }
+    },
+    {
+      "case_id": "etl-oom-009",
+      "category": "etl",
+      "input": {
+        "monitor_name": "Snowflake to BigQuery Sync",
+        "schedule": "0 6 * * *",
+        "timezone": "UTC",
+        "exit_code": 137,
+        "duration_ms": 4800000,
+        "logs_failed": "INFO  Loaded batch 1/40 (250k rows, 1.2 GB)\nINFO  Loaded batch 2/40 (250k rows, 1.2 GB)\nINFO  ...\nINFO  Loaded batch 18/40 (250k rows, 1.2 GB)\nKilled\n[exit code 137 — typical of OOMKilled by Linux kernel or Kubernetes]",
+        "logs_last_success": "INFO  Loaded batch 40/40 (250k rows, 1.2 GB)\nINFO  Sync complete in 1h 12m, 10.0M rows transferred"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the container or process was killed by the OOM-killer (exit code 137 = SIGKILL) after loading 18 of 40 batches.",
+        "explanation": "Each batch was 1.2 GB in memory; the job appears to be accumulating batches instead of streaming them, eventually exceeding the container's memory limit. The previous run completed all 40 batches, so either today's data is larger per row, the container's memory limit was reduced, or co-tenant workloads pushed it over.",
+        "suggested_fix": "Profile the sync to confirm whether batches are being held in memory rather than streamed. Either stream each batch to BigQuery and release it before reading the next, or increase the container's memory limit. Add a memory-usage metric and alert at 80 percent of limit so this is caught before OOMKill."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["memory"],
+        "must_not_contain": ["disk full", "permission"]
+      }
+    },
+    {
+      "case_id": "email-smtp-auth-failed-010",
+      "category": "email",
+      "input": {
+        "monitor_name": "Weekly Digest Email Job",
+        "schedule": "0 9 * * 1",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 4200,
+        "logs_failed": "INFO connecting to smtp.sendgrid.net:587 with TLS\nINFO STARTTLS negotiated\nERROR (535, b'5.7.0 Authentication failed: Maximum credential failures reached. ...')\nERROR failed to deliver digest to 1,842 recipients",
+        "logs_last_success": "INFO connecting to smtp.sendgrid.net:587 with TLS\nINFO STARTTLS negotiated\nINFO authenticated as apikey\nINFO 1,799 digest emails queued for delivery"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because SendGrid rejected SMTP authentication with a 535 \"credential failures reached\" error.",
+        "explanation": "The SMTP credential — either rotated, revoked, or temporarily locked after a burst of failed attempts — is no longer accepted. Last Monday's run authenticated successfully with the same code path, so the issue is on the credential / account side, not in the sending logic.",
+        "suggested_fix": "Log in to the SendGrid dashboard and check the API key status. If it was revoked or auto-rotated, generate a new one and update SMTP_PASSWORD (or equivalent) in the job's environment. If the account is locked due to suspicious activity, contact SendGrid support to unlock it."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["SendGrid", "authentication"],
+        "must_not_contain": ["disk", "memory"]
+      }
+    },
+    {
+      "case_id": "email-rate-limit-011",
+      "category": "email",
+      "input": {
+        "monitor_name": "Onboarding Email Drip",
+        "schedule": "*/10 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 8100,
+        "logs_failed": "INFO  processing 312 onboarding emails for cohort 2026-05-W19\nINFO  sent 50 / 312\nWARN  Brevo API: 429 Too Many Requests (retry after 60s)\nWARN  exceeded retry budget after 3 attempts\nERROR  aborting after 50 / 312 sent",
+        "logs_last_success": "INFO  processing 287 onboarding emails for cohort 2026-05-W19\nINFO  sent 287 / 287 in 6.4s"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because Brevo returned HTTP 429 after the 50th email and the retry budget was exhausted before the rate-limit window cleared.",
+        "explanation": "Brevo enforces a per-second send rate; the previous 10-minute cycle of 287 emails fit within the budget, but today's 312-email batch hit the limit at message 50. The retry-after window is 60 seconds, longer than the configured retry budget, so the job gave up with 262 emails undelivered.",
+        "suggested_fix": "Add throttling on the sender side so messages are dispatched at or below Brevo's per-second limit. Alternatively, raise the retry budget to honor the full retry-after window. The 262 unsent recipients should be re-queued — they are not yet delivered."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["429", "Brevo"],
+        "must_not_contain": ["network down", "DNS"]
+      }
+    },
+    {
+      "case_id": "email-template-error-012",
+      "category": "email",
+      "input": {
+        "monitor_name": "Invoice Email Generator",
+        "schedule": "0 11 1 * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 1100,
+        "logs_failed": "INFO  rendering invoice template for customer cus_K9...\nERROR  jinja2.exceptions.UndefinedError: 'dict object' has no attribute 'tax_breakdown'\n  File \"templates/invoice.html.j2\", line 47, in top-level template code\n    {% for item in invoice.tax_breakdown %}\nERROR  template render failed before any emails were sent",
+        "logs_last_success": "INFO  rendering invoice template for customer cus_A1...\nINFO  sent 142 invoice emails for the May 2026 billing cycle"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the Jinja2 template references invoice.tax_breakdown, which is not present on the invoice object being rendered.",
+        "explanation": "The template assumes every invoice has a tax_breakdown attribute. The current month's customer (cus_K9...) appears to be missing it — likely a customer in a tax-exempt jurisdiction or a recently-onboarded account where the tax breakdown isn't computed yet. The job aborted before any emails were sent, so no customer received a malformed invoice.",
+        "suggested_fix": "Update the template to use the safe form: {% for item in invoice.tax_breakdown | default([]) %}. Audit the data model to ensure tax_breakdown is always populated (even if empty) before invoices are rendered, so this class of bug doesn't recur."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["template", "tax_breakdown"],
+        "must_not_contain": ["network", "memory"]
+      }
+    },
+    {
+      "case_id": "cleanup-file-lock-013",
+      "category": "cleanup",
+      "input": {
+        "monitor_name": "Log Rotation",
+        "schedule": "0 0 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 800,
+        "logs_failed": "2026-05-17T00:00:01Z INFO rotating /var/log/app/server.log\nlogrotate: error: cannot rename /var/log/app/server.log: Text file busy\nlogrotate: error: failed to rotate log /var/log/app/server.log",
+        "logs_last_success": "2026-05-16T00:00:01Z INFO rotating /var/log/app/server.log (8.4 GB)\n2026-05-16T00:00:03Z INFO renamed to server.log.1, gzipped, signaled HUP to app"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because logrotate could not rename /var/log/app/server.log — the file is held open in write mode by a running process (\"Text file busy\").",
+        "explanation": "On Linux, an open file descriptor doesn't normally block rename, but \"Text file busy\" is returned when the file is open with write access by a process that has it as an executable mapping or under certain filesystem types. Most likely the application crashed mid-write and a defunct process is still holding the file descriptor, or the filesystem (e.g., a CIFS/NFS mount) doesn't allow rename-while-open semantics.",
+        "suggested_fix": "Identify the process holding the file with lsof /var/log/app/server.log and restart it cleanly. Switch logrotate's mode to copytruncate as a safer fallback that doesn't require renaming. Long-term, use a logging library that supports proper log-rotation signaling (SIGHUP, file-watch, etc.)."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["logrotate", "busy"],
+        "must_not_contain": ["disk full", "permission"]
+      }
+    },
+    {
+      "case_id": "cleanup-missing-dir-014",
+      "category": "cleanup",
+      "input": {
+        "monitor_name": "Temp File Cleanup",
+        "schedule": "*/15 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 200,
+        "logs_failed": "INFO  scanning /mnt/tmp/uploads for files older than 24h\nfind: '/mnt/tmp/uploads': No such file or directory\nERROR: scan target does not exist",
+        "logs_last_success": "INFO  scanning /mnt/tmp/uploads for files older than 24h\nINFO  removed 1,422 files (totaling 8.7 GB)"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the cleanup target directory /mnt/tmp/uploads does not exist at the moment of the run.",
+        "explanation": "The previous 15-minute run successfully removed files from the same path, so this is a fresh disappearance — most likely the volume backing /mnt/tmp was unmounted (failed remount on boot, NFS server unreachable, or a deploy step that recreates the mount didn't run).",
+        "suggested_fix": "Check the host's mount state (mount | grep /mnt/tmp). If the backing storage is NFS or another remote filesystem, verify it's reachable. If the path is supposed to be created on demand, add a guard in the cleanup script that creates it (mkdir -p) before scanning."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["/mnt/tmp/uploads"],
+        "must_not_contain": ["network", "memory"]
+      }
+    },
+    {
+      "case_id": "cleanup-permission-015",
+      "category": "cleanup",
+      "input": {
+        "monitor_name": "Old Backup Pruner",
+        "schedule": "0 5 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 14000,
+        "logs_failed": "INFO  identifying backups older than 30 days\nINFO  found 7 backups to delete\nINFO  removing /backups/prod-2026-04-17.sql.gz\nrm: cannot remove '/backups/prod-2026-04-17.sql.gz': Permission denied\nERROR: prune failed on first deletion",
+        "logs_last_success": "INFO  found 6 backups to delete\nINFO  removed 6 backups, freed 23 GB"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the service account running the pruner cannot delete /backups/prod-2026-04-17.sql.gz — the file's permissions deny rm by this user.",
+        "explanation": "The previous run pruned 6 backups successfully against the same directory. The new failure on a specific file suggests that backup's ownership or mode differs from the others — perhaps it was uploaded by a different process or copied with --preserve preserving mismatched ownership.",
+        "suggested_fix": "Check the ownership and mode of /backups/prod-2026-04-17.sql.gz vs the others (ls -la /backups). Either chown/chmod it to match, or update the backup-writing process so every new backup is written with consistent permissions readable + deletable by the pruner."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["permission", "/backups"],
+        "must_not_contain": ["connection", "memory"]
+      }
+    },
+    {
+      "case_id": "ml-cuda-oom-016",
+      "category": "ml_training",
+      "input": {
+        "monitor_name": "Nightly Embedding Refresh",
+        "schedule": "0 2 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 540000,
+        "logs_failed": "[2026-05-17 02:00:01] Loading model bge-large-en-v1.5\n[2026-05-17 02:00:14] Starting batch 1 / 240 (batch_size=64)\n[2026-05-17 02:08:42] torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.50 GiB. GPU 0 has a total capacity of 23.69 GiB of which 0 bytes is free.",
+        "logs_last_success": "[2026-05-16 02:00:01] Loading model bge-large-en-v1.5\n[2026-05-16 02:34:18] Completed 240 / 240 batches, refreshed 980k embeddings"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because PyTorch could not allocate 1.5 GiB on GPU 0 — the device's 23.69 GiB is fully consumed.",
+        "explanation": "Yesterday's run completed all 240 batches at the same batch size on the same hardware. Today's allocation failure mid-batch suggests another process is holding GPU memory on the same device (a leaked or crashed previous job), or this run's input batches contain longer sequences pushing per-batch VRAM higher.",
+        "suggested_fix": "Run nvidia-smi to identify any orphan processes holding GPU memory and terminate them. If the issue is per-batch sequence length, sort or pad batches deterministically and consider torch.cuda.empty_cache() between batches. As a fallback, halve the batch size and rerun."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["CUDA", "memory"],
+        "must_not_contain": ["disk full", "network"]
+      }
+    },
+    {
+      "case_id": "ml-gpu-not-available-017",
+      "category": "ml_training",
+      "input": {
+        "monitor_name": "Search Index Rebuild",
+        "schedule": "0 4 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 12000,
+        "logs_failed": "[INFO] Initializing CUDA context\n[ERROR] RuntimeError: No CUDA GPUs are available\n[ERROR] nvidia-smi: NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.",
+        "logs_last_success": "[INFO] Initializing CUDA context\n[INFO] Detected 1 GPU: NVIDIA L4, driver 545.23.06, CUDA 12.4\n[INFO] Index rebuild completed in 34 minutes"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the NVIDIA driver on the host is not responding, and CUDA can't discover any GPUs.",
+        "explanation": "Yesterday's run used a healthy L4 with driver 545.23.06; today the same nvidia-smi command returns a driver-communication error. This is typically a kernel-module mismatch (kernel was updated, but the matching nvidia.ko wasn't rebuilt), a thermal shutdown of the GPU, or a hardware fault.",
+        "suggested_fix": "Run nvidia-smi on the host to confirm the driver state. If it reports a communication failure, reload the driver (rmmod nvidia* and modprobe nvidia, or reboot if rmmod fails). If the host was recently kernel-upgraded, reinstall or rebuild the matching driver. Check dmesg for thermal or PCIe errors."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["driver"],
+        "must_not_contain": ["disk full", "permission"]
+      }
+    },
+    {
+      "case_id": "ml-model-load-failed-018",
+      "category": "ml_training",
+      "input": {
+        "monitor_name": "Daily Classifier Retraining",
+        "schedule": "0 1 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 6800,
+        "logs_failed": "[INFO] Loading checkpoint from s3://ml-checkpoints/classifier/v34/model.safetensors\n[ERROR] safetensors_rust.SafetensorError: Error while deserializing header: header is malformed: invalid utf-8\n[ERROR] failed to resume training from v34 checkpoint",
+        "logs_last_success": "[INFO] Loading checkpoint from s3://ml-checkpoints/classifier/v33/model.safetensors\n[INFO] Resumed from epoch 12, completed 3 more epochs, saved v34 checkpoint"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the v34 model checkpoint downloaded from S3 has a malformed safetensors header.",
+        "explanation": "The checkpoint was written by yesterday's successful run but cannot be deserialized today, suggesting the file is truncated or corrupted in S3 — most likely an interrupted upload that didn't trigger a completion guard, or an in-flight S3 copy operation that left an incomplete object.",
+        "suggested_fix": "Inspect the S3 object: aws s3 ls s3://ml-checkpoints/classifier/v34/ and compare its size to v33's. If truncated, restore from v33 and rerun. Long-term, write checkpoints via S3 multipart upload with explicit completion, and verify the checkpoint round-trips locally before treating the upload as committed."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["checkpoint", "safetensors"],
+        "must_not_contain": ["network", "permission"]
+      }
+    },
+    {
+      "case_id": "api-sync-oauth-expired-019",
+      "category": "api_sync",
+      "input": {
+        "monitor_name": "GitHub Issue Sync",
+        "schedule": "*/5 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 1900,
+        "logs_failed": "INFO  pulling new issues since 2026-05-17T08:55Z\nINFO  GET https://api.github.com/repos/acme/web/issues -> 401\nERROR  github API: 401 Bad credentials. The token may be expired or revoked.\nERROR  sync halted, 0 issues processed",
+        "logs_last_success": "INFO  pulling new issues since 2026-05-17T08:50Z\nINFO  fetched 14 new issues, 3 closed, 2 reopened"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because GitHub rejected the API token with 401 Bad credentials.",
+        "explanation": "The token was accepted five minutes ago, so this is a sudden revocation or expiration — most commonly a fine-grained PAT hit its configured expiry, the token was rotated by an admin, or a security policy invalidated it (e.g., a leak detected by GitHub's secret scanner).",
+        "suggested_fix": "Open https://github.com/settings/tokens and check the token's status. If expired or revoked, generate a replacement with the same scopes and update the GITHUB_TOKEN environment variable for this job. If your org rotates tokens on a fixed schedule, automate the renewal."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["401", "GitHub"],
+        "must_not_contain": ["disk", "memory"]
+      }
+    },
+    {
+      "case_id": "api-sync-rate-limit-020",
+      "category": "api_sync",
+      "input": {
+        "monitor_name": "Slack User Directory Sync",
+        "schedule": "0 */2 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 23000,
+        "logs_failed": "INFO  paginating users.list (Tier 2, ~20 req/min)\nINFO  page 1: 200 OK (100 users)\nINFO  page 2: 200 OK (100 users)\nINFO  ... 18 more pages ...\nWARN  page 21: 429 ratelimited, Retry-After: 60\nWARN  page 21 retry: 429 ratelimited, Retry-After: 90\nERROR  exhausted retry budget at page 21 of ~40",
+        "logs_last_success": "INFO  fetched 4,124 users across 41 pages in 18s"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because Slack's users.list endpoint returned 429 Too Many Requests at page 21 and the retry budget was insufficient to absorb the Retry-After windows.",
+        "explanation": "Slack's Tier 2 methods cap at ~20 requests/minute. The sync was clearly above that — finishing 21 pages in under 23 seconds is ~55 requests/minute. The previous run completed all 41 pages but may have been near the threshold; today's higher initial concurrency tripped the limit.",
+        "suggested_fix": "Add a token-bucket throttle to the pagination loop so requests are dispatched at or below 18/minute. Respect Retry-After explicitly. If the sync needs to be faster, batch-update Slack's response cache rather than refetching the entire directory every 2 hours."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["429", "Slack"],
+        "must_not_contain": ["disk full", "permission"]
+      }
+    },
+    {
+      "case_id": "api-sync-schema-change-021",
+      "category": "api_sync",
+      "input": {
+        "monitor_name": "HubSpot Contact Sync",
+        "schedule": "*/30 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 4500,
+        "logs_failed": "INFO  POST https://api.hubapi.com/crm/v3/objects/contacts/batch/create\nERROR  HubSpot API: 400 Bad Request: Property 'phone' is required for contact creation as of 2026-05-15\nERROR  rejected batch of 87 contacts, none created",
+        "logs_last_success": "INFO  POST https://api.hubapi.com/crm/v3/objects/contacts/batch/create\nINFO  created 124 contacts, updated 16, errors 0"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because HubSpot now requires a 'phone' property on contact creation, and the sync is sending payloads without it.",
+        "explanation": "HubSpot's error message names the breaking change explicitly: phone became required on 2026-05-15. The sync's payload schema hasn't been updated, so all 87 contacts in the batch were rejected together. Earlier runs (before May 15) succeeded under the old schema.",
+        "suggested_fix": "Update the contact-creation payload to include phone (use a default like empty string if your source data doesn't have it, or skip the contact if HubSpot also disallows empty). Review HubSpot's API changelog and add a CI check or staging-env sync that catches breaking schema changes before they hit production."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["HubSpot", "phone"],
+        "must_not_contain": ["disk", "memory"]
+      }
+    },
+    {
+      "case_id": "api-sync-timeout-022",
+      "category": "api_sync",
+      "input": {
+        "monitor_name": "Salesforce Bulk Export",
+        "schedule": "0 7 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 300000,
+        "logs_failed": "INFO  submitting bulk query: SELECT Id, Name, ... FROM Opportunity WHERE LastModifiedDate >= LAST_N_DAYS:1\nINFO  job id 750... created, polling for completion\nINFO  ... 50 polls over 300s, status still 'InProgress' ...\nERROR  client-side timeout at 5m, job still running on Salesforce side",
+        "logs_last_success": "INFO  job 750... completed in 47s, downloaded 12.8k rows"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because our 5-minute client-side polling budget expired while Salesforce's bulk query was still running.",
+        "explanation": "The previous run completed in 47 seconds, so this query is unusually slow today — most likely Salesforce is under load, the day's modified-Opportunity set is much larger than usual, or the org is hitting a governor limit that's slowing the bulk job. The job itself is still progressing on Salesforce's side; we just stopped polling.",
+        "suggested_fix": "Raise the client-side polling timeout to match the realistic upper bound of the bulk query (15-30 minutes for large daily exports). Alternatively, switch to chunked queries (smaller date windows) that finish more predictably. Check Salesforce's Bulk API limits dashboard to confirm no quota was hit."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["Salesforce", "timeout"],
+        "must_not_contain": ["disk full", "permission"]
+      }
+    },
+    {
+      "case_id": "cron-timezone-confusion-023",
+      "category": "cron_misconfig",
+      "input": {
+        "monitor_name": "End-of-Business-Day Report",
+        "schedule": "0 17 * * 1-5",
+        "timezone": "UTC",
+        "exit_code": 0,
+        "duration_ms": 4200,
+        "logs_failed": "2026-05-17T17:00:01Z INFO generating EoB report for 2026-05-17\nINFO  pulled 0 sales records for today (markets still open in US)\nINFO  report contains zero data, email sent to leadership with empty tables\nWARN  Saksham: 'Why is the EoB report blank again??' (Slack DM at 17:05Z)",
+        "logs_last_success": "(no clearly successful prior run on file)"
+      },
+      "ideal_output": {
+        "root_cause": "Job succeeded technically (exit 0) but the schedule is set in UTC while leadership expects it to run at 5pm Eastern, so the report fires mid-business-day with empty data.",
+        "explanation": "17:00 UTC is 1pm Eastern Daylight Time and noon Eastern Standard Time — long before US markets close. The data the report pulls is intra-day partial and looks empty or unrepresentative. This isn't a code failure, it's a schedule misconfiguration: the cron timezone setting doesn't match the report's business meaning.",
+        "suggested_fix": "Change the monitor's timezone from UTC to America/New_York (Whycron supports per-monitor timezone). Keep the cron expression '0 17 * * 1-5' so it fires at 5pm local each weekday and follows DST automatically. Add a sanity check inside the job that fails loudly if it pulled fewer than N rows on a weekday."
+      },
+      "evaluation_criteria": {
+        "must_contain_any_of": [
+          "timezone",
+          "eastern",
+          "21:00",
+          "after market",
+          "after 21",
+          "tz="
+        ],
+        "must_not_contain": ["disk", "permission", "memory"]
+      }
+    },
+    {
+      "case_id": "cron-overlapping-runs-024",
+      "category": "cron_misconfig",
+      "input": {
+        "monitor_name": "Cache Warmer",
+        "schedule": "*/5 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 290000,
+        "logs_failed": "INFO  starting cache warm for tenants A-Z (sequential)\nINFO  tenant 'acme' warmed in 38s\nINFO  tenant 'beta' warmed in 41s\n...\nWARN  another cache-warmer process is already running (lock /var/run/cache-warm.lock held)\nERROR  refusing to start; previous run from 5 minutes ago is still in progress",
+        "logs_last_success": "INFO  warmed 26 tenants in 4m 12s"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the previous cache-warmer is still running when the next 5-minute tick fires, and the lock file prevents a second concurrent process.",
+        "explanation": "Each run takes around 4 minutes against 26 tenants; tenant count or per-tenant cost grew until runs are now taking longer than 5 minutes. The lock file is doing its job — refusing to start a second concurrent warmer — but the cron interval is no longer long enough for the work it's asking for.",
+        "suggested_fix": "Either stretch the cron interval to */15 or */10 minutes, or parallelize the per-tenant warm so a single run finishes well under 5 minutes. Long-term, instrument per-tenant warm time and alert when the slowest tenant approaches the cron interval."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["lock"],
+        "must_not_contain": ["network", "disk", "memory"]
+      }
+    },
+    {
+      "case_id": "infra-dns-failure-025",
+      "category": "infrastructure",
+      "input": {
+        "monitor_name": "Webhook Replayer",
+        "schedule": "*/2 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 30000,
+        "logs_failed": "INFO  replaying 12 pending webhooks to api.partner.com\nERROR  socket.gaierror: [Errno -2] Name or service not known: 'api.partner.com'\nERROR  same DNS failure on all 12 attempts; 0 replayed",
+        "logs_last_success": "INFO  replayed 8 webhooks to api.partner.com, all 200 OK in 1.2s"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because DNS resolution for api.partner.com is failing with gaierror -2 (Name or service not known).",
+        "explanation": "Two minutes ago the same hostname resolved fine. The sudden NXDOMAIN-style failure points to a problem on the resolver side — the host's /etc/resolv.conf may be wrong, the upstream DNS server is unreachable, or the partner's authoritative zone is having an outage of its own.",
+        "suggested_fix": "Run nslookup api.partner.com from the host to confirm the symptom and identify whether it's local-resolver or upstream. Try a public resolver (1.1.1.1 / 8.8.8.8) to isolate. If it's the partner's zone, contact them; if it's our resolver, restart the local DNS daemon or fail over to an alternate."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["DNS"],
+        "must_not_contain": ["disk", "memory", "permission"]
+      }
+    },
+    {
+      "case_id": "infra-tls-cert-expired-026",
+      "category": "infrastructure",
+      "input": {
+        "monitor_name": "Vendor API Health Probe",
+        "schedule": "* * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 800,
+        "logs_failed": "INFO  GET https://vendor.example.com/health\nERROR  ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1006)\nERROR  not retrying; cert expired",
+        "logs_last_success": "INFO  GET https://vendor.example.com/health -> 200 OK"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because vendor.example.com's TLS certificate has expired, and the Python ssl module refuses to complete the handshake.",
+        "explanation": "Certificates expire on a fixed date; the previous minute's probe succeeded, so the cert flipped over its expiration boundary between then and now. This is the vendor's responsibility, not ours — our client is correctly refusing to trust an expired cert.",
+        "suggested_fix": "Contact the vendor with the exact expiration timestamp from openssl s_client -connect vendor.example.com:443. Do not work around the failure by disabling cert verification — that re-opens MITM exposure. If urgent, switch to a pinned secondary endpoint if the vendor provides one."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["certificate"],
+        "must_not_contain": ["disk", "memory"]
+      }
+    },
+    {
+      "case_id": "infra-network-unreachable-027",
+      "category": "infrastructure",
+      "input": {
+        "monitor_name": "Internal API Latency Probe",
+        "schedule": "*/1 * * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 30000,
+        "logs_failed": "INFO  TCP connect to 10.0.7.42:8443\nERROR  OSError: [Errno 101] Network is unreachable\nERROR  no route to internal subnet 10.0.7.0/24",
+        "logs_last_success": "INFO  internal API health probe ok (12ms p50)"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because the probe host has no route to the 10.0.7.0/24 internal subnet (errno 101, network unreachable).",
+        "explanation": "A minute ago the same probe succeeded with 12ms latency, so this is a fresh routing or networking-layer break — most likely a recent VPC peering change, a deleted route, a security group update, or an instance moved between subnets without its routing table being updated.",
+        "suggested_fix": "From the probe host, run ip route get 10.0.7.42 to see how (or if) the kernel resolves the destination. Audit recent VPC / route-table / security-group changes in the cloud console. Roll back the most recent network change if the timing matches."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["network", "10.0.7"],
+        "must_not_contain": ["disk", "permission"]
+      }
+    },
+    {
+      "case_id": "edge-empty-logs-028",
+      "category": "edge_cases",
+      "input": {
+        "monitor_name": "Mystery Cleanup Job",
+        "schedule": "0 3 * * *",
+        "timezone": "UTC",
+        "exit_code": 137,
+        "duration_ms": 4200,
+        "logs_failed": "",
+        "logs_last_success": "INFO  cleanup completed, 0 errors"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed with exit code 137 (SIGKILL) and produced no log output, so the cause cannot be determined from the logs alone.",
+        "explanation": "Exit code 137 indicates the process was forcibly killed — typically by the Linux OOM-killer, by Kubernetes evicting the pod, or by an explicit kill -9. With no log output at all, neither the application nor the kernel left behind a signal we can read here.",
+        "suggested_fix": "Check the host's kernel log (dmesg | tail) or the container orchestrator's events for an OOM-kill or eviction reference matching the timestamp. Add explicit logging at the start of the job so the next failure isn't this silent — even a single 'starting' line distinguishes 'never started' from 'crashed mid-run'."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["137"],
+        "must_not_contain": ["disk full", "permission denied"]
+      }
+    },
+    {
+      "case_id": "edge-gigantic-logs-029",
+      "category": "edge_cases",
+      "input": {
+        "monitor_name": "Verbose Test Suite Runner",
+        "schedule": "0 */6 * * *",
+        "timezone": "UTC",
+        "exit_code": 1,
+        "duration_ms": 1800000,
+        "logs_failed": "[... 198 prior lines of pytest -v output, all PASSED ...]\napps/api/tests/test_billing_webhook.py::test_subscription_canceled_downgrades_to_free PASSED\napps/api/tests/test_billing_webhook.py::test_duplicate_event_is_skipped FAILED\nE   AssertionError: expected status 'duplicate' but got 'ok'\nE   assert 'ok' == 'duplicate'\nFAILED apps/api/tests/test_billing_webhook.py::test_duplicate_event_is_skipped\n=== 1 failed, 291 passed in 318.42s ===",
+        "logs_last_success": "[... pytest output ...] === 292 passed in 312.18s ==="
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because one test — test_duplicate_event_is_skipped — regressed; the webhook handler returned 'ok' for what should have been a duplicate event delivery.",
+        "explanation": "291 of 292 tests passed in 318 seconds, so the test suite as a whole is healthy. The single failure is the idempotency check in the billing webhook handler — a duplicate Polar event should be skipped with status 'duplicate', but the handler responded 'ok', suggesting either the processed_polar_events table isn't being consulted or the recent event-id-extraction logic changed.",
+        "suggested_fix": "Inspect recent changes to apps/api/routes/billing.py around webhook idempotency and apps/api/services/billing.py around is_event_already_processed. Run the failing test in isolation with -v to capture the response body. Verify the processed_polar_events table is being written and read against the right column."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["test_duplicate_event_is_skipped"],
+        "must_not_contain": ["disk full", "memory"]
+      }
+    },
+    {
+      "case_id": "edge-non-english-logs-030",
+      "category": "edge_cases",
+      "input": {
+        "monitor_name": "Tokyo Region Daily Sync",
+        "schedule": "0 0 * * *",
+        "timezone": "Asia/Tokyo",
+        "exit_code": 1,
+        "duration_ms": 8400,
+        "logs_failed": "情報: 同期処理を開始します (sync started)\n情報: 接続中... db-tokyo.internal:5432\nエラー: パスワード認証に失敗しました (FATAL: password authentication failed for user 'sync')\n中断: バックアップは作成されませんでした",
+        "logs_last_success": "情報: 同期処理を開始します\n情報: 12,400 行を同期しました (synced 12,400 rows in 8s)"
+      },
+      "ideal_output": {
+        "root_cause": "Job failed because Postgres rejected the credentials for user 'sync' with a password authentication failure.",
+        "explanation": "The relevant signal in the logs is the parenthetical FATAL line: 'password authentication failed for user sync'. Yesterday the same user authenticated successfully, so the password — or the user's pg_hba.conf entry — has been changed since.",
+        "suggested_fix": "Verify the current password for the 'sync' user (or rotate it explicitly and update the job's secret). Check pg_hba.conf on db-tokyo for the connection rule that applies to this client IP — a recent change to host-based auth could have invalidated previously-working credentials."
+      },
+      "evaluation_criteria": {
+        "must_contain": ["password", "sync"],
+        "must_not_contain": ["disk", "memory"]
+      }
+    }
+  ]
+}
