@@ -184,6 +184,7 @@ async def authed_user_factory(
         NotificationDelivery,
         Organization,
         Run,
+        SlackInstallation,
         User,
     )
 
@@ -272,6 +273,11 @@ async def authed_user_factory(
             )
             await s.execute(
                 delete(APIKey).where(APIKey.organization_id == org_id)
+            )
+            await s.execute(
+                delete(SlackInstallation).where(
+                    SlackInstallation.organization_id == org_id
+                )
             )
             await s.execute(
                 delete(User).where(User.organization_id == org_id)

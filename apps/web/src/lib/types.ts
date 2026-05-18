@@ -96,7 +96,7 @@ export interface RunListResponse {
   offset: number;
 }
 
-export type ChannelType = "email" | "webhook" | "discord";
+export type ChannelType = "email" | "webhook" | "slack" | "discord";
 
 export interface NotificationChannel {
   id: string;

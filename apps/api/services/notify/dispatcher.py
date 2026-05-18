@@ -29,13 +29,20 @@ from apps.api.models import (
     NotificationChannel,
     NotificationDelivery,
     Run,
+    SlackInstallation,
 )
+from apps.api.services.crypto import decrypt
 from apps.api.services.notify.discord import (
     DiscordDeliveryFailed,
     send_discord_message,
 )
 from apps.api.services.notify.email import EmailDeliveryFailed, send_brevo_email
 from apps.api.services.notify.format import RenderedAlert, render_alert
+from apps.api.services.notify.slack import (
+    SlackDeliveryFailed,
+    render_slack_blocks,
+    send_slack_message,
+)
 from apps.api.services.notify.webhook import (
     WebhookDeliveryFailed,
     send_signed_webhook,
@@ -124,8 +131,11 @@ async def _dispatch_inner(
     rendered = render_alert(monitor=monitor, run=run, explanation=explanation)
 
     for channel in channels:
+        external_id: str | None = None
         try:
-            await _send_to_channel(channel, rendered, run, monitor, explanation)
+            external_id = await _send_to_channel(
+                session, channel, rendered, run, monitor, explanation
+            )
         except Exception as exc:  # noqa: BLE001 — we want to log + record any failure
             log.warning(
                 "channel_delivery_failed",
@@ -159,6 +169,7 @@ async def _dispatch_inner(
                 attempts=1,
                 last_attempt_at=datetime.now(timezone.utc),
                 payload_summary=_summary(channel, rendered),
+                external_id=external_id,
             )
         )
         counts["sent"] += 1
@@ -168,12 +179,14 @@ async def _dispatch_inner(
 
 
 async def _send_to_channel(
+    session: AsyncSession,
     channel: NotificationChannel,
     rendered: RenderedAlert,
     run: Run,
     monitor: Monitor,
     explanation: AIExplanation | None,
-) -> None:
+) -> str | None:
+    """Returns a channel-side external_id (e.g. Slack ``ts``) or ``None``."""
     config = dict(channel.config or {})
     if channel.type == "email":
         to = config.get("to")
@@ -186,7 +199,7 @@ async def _send_to_channel(
             text_body=rendered.text_body,
             html_body=rendered.html_body,
         )
-        return
+        return None
 
     if channel.type == "webhook":
         url = config.get("url")
@@ -197,7 +210,7 @@ async def _send_to_channel(
             payload=_webhook_payload(run, monitor, explanation),
             secret=config.get("secret"),
         )
-        return
+        return None
 
     if channel.type == "discord":
         url = config.get("url")
@@ -207,9 +220,102 @@ async def _send_to_channel(
             webhook_url=url,
             content=f"**{rendered.subject}**\n\n```{rendered.text_body[:1800]}```",
         )
-        return
+        return None
+
+    if channel.type == "slack":
+        return await _send_slack(session, channel, rendered, run, monitor, explanation)
 
     raise ValueError(f"unsupported channel type: {channel.type!r}")
+
+
+# ── Slack-specific helpers ──────────────────────────────────────────────────
+
+
+async def _send_slack(
+    session: AsyncSession,
+    channel: NotificationChannel,
+    rendered: RenderedAlert,
+    run: Run,
+    monitor: Monitor,
+    explanation: AIExplanation | None,
+) -> str:
+    config = dict(channel.config or {})
+    channel_id = config.get("channel_id")
+    if not channel_id:
+        raise ValueError("slack channel missing 'channel_id' in config")
+
+    install = (
+        await session.execute(
+            select(SlackInstallation).where(
+                SlackInstallation.organization_id == run.organization_id,
+                SlackInstallation.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if install is None:
+        raise ValueError(
+            "Slack workspace is not connected for this organization. "
+            "Reconnect at /channels."
+        )
+
+    bot_token = decrypt(install.bot_token_encrypted)
+    thread_ts = await _find_thread_ts_for_incident(session, monitor.id, channel.id)
+
+    blocks = render_slack_blocks(
+        subject=rendered.subject,
+        monitor_name=monitor.name,
+        state=run.state,
+        schedule=monitor.schedule_value,
+        monitor_url=_monitor_url(monitor.id),
+        explanation_root_cause=explanation.root_cause if explanation else None,
+        explanation_text=explanation.explanation if explanation else None,
+        explanation_fix=explanation.suggested_fix if explanation else None,
+    )
+
+    return await send_slack_message(
+        bot_token=bot_token,
+        channel_id=str(channel_id),
+        text=rendered.subject,
+        blocks=blocks,
+        thread_ts=thread_ts,
+    )
+
+
+async def _find_thread_ts_for_incident(
+    session: AsyncSession,
+    monitor_id: uuid.UUID,
+    channel_id: uuid.UUID,
+) -> str | None:
+    """Look up an existing thread to reply into for follow-up alerts on
+    the same monitor + channel.
+
+    Strategy: the most recent successfully-sent Slack delivery for this
+    (monitor, channel) pair becomes the root of the thread. If we ever
+    want to "close" a thread (e.g. after a recovery), we'd record that
+    explicitly; for V2 we just keep replying to the latest sent ts.
+    """
+    row = (
+        await session.execute(
+            select(NotificationDelivery)
+            .join(Run, Run.id == NotificationDelivery.run_id)
+            .where(
+                NotificationDelivery.channel_id == channel_id,
+                NotificationDelivery.channel_type == "slack",
+                NotificationDelivery.status == "sent",
+                NotificationDelivery.external_id.is_not(None),
+                Run.monitor_id == monitor_id,
+            )
+            .order_by(NotificationDelivery.last_attempt_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row.external_id if row is not None else None
+
+
+def _monitor_url(monitor_id: uuid.UUID) -> str | None:
+    if not settings.frontend_url:
+        return None
+    return f"{settings.frontend_url.rstrip('/')}/monitors/{monitor_id}"
 
 
 def _webhook_payload(

@@ -86,3 +86,7 @@ class NotificationDelivery(Base, CreatedAtMixin):
     # Summary for debugging — never the full payload (avoids leaking secrets
     # back through delivery logs).
     payload_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Channel-specific reference returned by the destination. For Slack:
+    # the message ``ts`` (used as ``thread_ts`` for subsequent replies on
+    # the same incident). For Discord / webhook: not used today.
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)

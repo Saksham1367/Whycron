@@ -33,6 +33,7 @@ api = [
     "pyjwt[crypto]>=2.9.0",
     "posthog>=3.10.0",
     "bcrypt>=4.2.0",
+    "cryptography>=43.0.0",
 ]
 worker = [
     "rq>=2.0.0",
@@ -81,5 +82,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
-testpaths = ["apps"]
+# The SDK packages ship their own pyproject with their own test deps
+# (pytest-httpx for the Python SDK, vitest for the Node one). Restrict
+# the root suite to the backend + worker so ``uv run pytest`` from the
+# project root doesn't try to collect SDK tests.
+testpaths = ["apps/api", "apps/worker"]
 addopts = "-ra --strict-markers"

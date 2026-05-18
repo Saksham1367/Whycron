@@ -15,6 +15,7 @@ from apps.api.models.notification import (
     NotificationDelivery,
 )
 from apps.api.models.run import AIExplanation, Run
+from apps.api.models.slack import SlackInstallation
 from apps.api.models.tenancy import Organization, User
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "Organization",
     "ProcessedPolarEvent",
     "Run",
+    "SlackInstallation",
     "User",
 ]

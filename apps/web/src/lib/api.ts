@@ -177,7 +177,7 @@ export const api = {
     request("/api/v1/notification-channels"),
 
   createChannel: (body: {
-    type: "email" | "webhook" | "discord";
+    type: "email" | "webhook" | "slack" | "discord";
     name: string;
     config: Record<string, unknown>;
     enabled?: boolean;
@@ -231,6 +231,19 @@ export const api = {
 
   revokeApiKey: (id: string): Promise<null> =>
     request(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
+
+  // ── Slack integration ───────────────────────────────────────────────────
+  getSlackInstallation: (): Promise<SlackInstallationInfo> =>
+    request("/api/v1/integrations/slack"),
+
+  startSlackInstall: (): Promise<{ authorize_url: string }> =>
+    request("/api/v1/integrations/slack/install"),
+
+  uninstallSlack: (): Promise<null> =>
+    request("/api/v1/integrations/slack", { method: "DELETE" }),
+
+  listSlackChannels: (): Promise<SlackChannelsResponse> =>
+    request("/api/v1/integrations/slack/channels"),
 };
 
 export type ApiKeyScope =
@@ -252,4 +265,24 @@ export interface ApiKey {
 
 export interface ApiKeyCreated extends ApiKey {
   plaintext: string;
+}
+
+export interface SlackInstallationInfo {
+  connected: boolean;
+  team_id?: string;
+  team_name?: string;
+  scopes?: string[];
+  installed_at?: string;
+}
+
+export interface SlackChannelOption {
+  id: string;
+  name: string;
+  is_private: boolean;
+  is_member: boolean;
+}
+
+export interface SlackChannelsResponse {
+  team_name: string;
+  channels: SlackChannelOption[];
 }

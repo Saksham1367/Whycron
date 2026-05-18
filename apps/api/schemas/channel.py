@@ -31,8 +31,13 @@ class ChannelCreate(BaseModel):
                     f"{self.type} channel requires config.url starting with https://"
                 )
         elif self.type == "slack":
-            # Slack OAuth is a V2 feature; reject for V1 cleanly.
-            raise ValueError("slack channel is not yet supported")
+            channel_id = self.config.get("channel_id")
+            if not channel_id or not isinstance(channel_id, str):
+                raise ValueError(
+                    "slack channel requires config.channel_id (the Slack "
+                    "channel id, e.g. 'C0123ABCD'). Pick a channel after "
+                    "connecting your workspace."
+                )
         return self
 
 

@@ -27,6 +27,7 @@ from apps.api.routes import (
     auth,
     billing,
     channels,
+    integrations,
     monitors,
     ping,
     runs,
@@ -111,6 +112,7 @@ app.include_router(channels.router)
 app.include_router(account.router)
 app.include_router(billing.router)
 app.include_router(api_keys.router)
+app.include_router(integrations.router)
 
 
 @app.get("/health", tags=["meta"])
