@@ -1,0 +1,72 @@
+name: Publish Node SDK
+
+# Trusted publishing to npm via OIDC — no API token needed.
+# Requires npm CLI >= 11.5.1 (which is what setup-node 22+ ships).
+# Triggered when a git tag of the form ``sdk-js-v0.1.0`` is pushed.
+#
+# One-time npm setup (do this before the first release):
+#   1. Sign in at https://www.npmjs.com/ with the Whycron publisher account.
+#   2. The package name must already be unclaimed -- pre-publish it once
+#      manually if you want to reserve it, OR run this workflow once and
+#      let the first version create the package.
+#   3. After the package exists: https://www.npmjs.com/package/whycron/access
+#      -> Trusted Publisher -> Add trusted publisher (GitHub Actions).
+#        Repository:        Saksham1367/Whycron
+#        Workflow filename: publish-node-sdk.yml
+#        Environment:       npm
+#   4. Save.
+
+on:
+  push:
+    tags:
+      - "sdk-js-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build + publish to npm
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/whycron
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/sdks/node
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#sdk-js-v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish (trusted publishing via OIDC)
+        run: npm publish --provenance --access public

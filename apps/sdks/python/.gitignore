@@ -1,0 +1,11 @@
+.test-deps/
+.pytest_cache/
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+.venv/
+.coverage
+htmlcov/
+.DS_Store

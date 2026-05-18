@@ -1,0 +1,75 @@
+name: SDK CI
+
+# Runs on every PR + push to main. Builds + tests both SDKs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/sdks/**"
+      - ".github/workflows/sdk-ci.yml"
+  pull_request:
+    paths:
+      - "apps/sdks/**"
+      - ".github/workflows/sdk-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/sdks/python
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Test
+        run: python -m pytest -v
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+  node:
+    name: Node SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/sdks/node
+    strategy:
+      matrix:
+        node-version: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

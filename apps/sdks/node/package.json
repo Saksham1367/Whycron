@@ -1,0 +1,58 @@
+{
+  "name": "whycron",
+  "version": "0.1.0",
+  "description": "Official Node.js client for Whycron — cron job monitoring that tells you why.",
+  "keywords": [
+    "cron",
+    "monitoring",
+    "scheduled-jobs",
+    "heartbeat",
+    "alerts",
+    "observability"
+  ],
+  "homepage": "https://whycron.com",
+  "bugs": {
+    "url": "https://github.com/Saksham1367/Whycron/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Saksham1367/Whycron.git",
+    "directory": "apps/sdks/node"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Saksham Dhingra",
+    "email": "sakshamdhingra1305@gmail.com"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --target node18",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}

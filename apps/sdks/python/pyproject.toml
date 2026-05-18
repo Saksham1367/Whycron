@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "whycron"
+version = "0.1.0"
+description = "Official Python client for Whycron — cron job monitoring that tells you why."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Saksham Dhingra", email = "sakshamdhingra1305@gmail.com" },
+]
+keywords = ["cron", "monitoring", "scheduled-jobs", "heartbeat", "alerts", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-httpx>=0.30.0",
+]
+
+[project.urls]
+Homepage = "https://whycron.com"
+Documentation = "https://github.com/Saksham1367/Whycron/tree/main/apps/sdks/python#readme"
+Repository = "https://github.com/Saksham1367/Whycron"
+Issues = "https://github.com/Saksham1367/Whycron/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["whycron"]
+
+[tool.hatch.build.targets.sdist]
+include = ["whycron", "README.md", "LICENSE", "pyproject.toml"]
