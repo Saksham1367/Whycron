@@ -9,6 +9,7 @@ import { Topbar } from "@/components/Topbar";
 import type { ShellContext } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { fmtRelative } from "@/lib/format";
+import { formatSchedule } from "@/lib/schedule";
 import type { Monitor } from "@/lib/types";
 
 const STATUS_FILTERS = [
@@ -121,7 +122,7 @@ export function MonitorsScreen() {
             >
               <span className="wc-row__name">{m.name}</span>
               <span className="wc-row__schedule">
-                {m.schedule_type === "cron" ? m.schedule_value : m.schedule_type}
+                {formatSchedule(m.schedule_type, m.schedule_value)}
               </span>
               <span className="wc-row__meta">{m.timezone}</span>
               <StatusBadge status={m.status} />

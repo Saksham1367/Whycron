@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { Button } from "@/components/Button";
+import { CronPreview } from "@/components/CronPreview";
 import { Eyebrow } from "@/components/Eyebrow";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { Topbar } from "@/components/Topbar";
@@ -192,40 +193,61 @@ export function CreateMonitorScreen() {
           </form>
         </SurfaceCard>
 
-        <SurfaceCard>
-          <Eyebrow>Heartbeat preview</Eyebrow>
-          <h3
-            style={{
-              font: "600 1.05rem var(--wc-font-body)",
-              letterSpacing: "-0.02em",
-              margin: ".5rem 0 .8rem",
-            }}
-          >
-            After you create this monitor
-          </h3>
-          <p
-            style={{
-              color: "var(--wc-text-soft)",
-              margin: 0,
-              fontSize: ".88rem",
-            }}
-          >
-            You'll get a ping URL like{" "}
-            <code
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <SurfaceCard>
+            <Eyebrow>Schedule preview</Eyebrow>
+            <p
               style={{
-                fontFamily: "var(--wc-font-code)",
-                color: "var(--wc-text)",
-                background: "rgba(4,7,12,.6)",
-                padding: "2px 6px",
-                borderRadius: 6,
+                color: "var(--wc-text-soft)",
+                margin: ".5rem 0 .9rem",
+                fontSize: ".85rem",
               }}
             >
-              {`POST https://whycron.dev/p/<token>`}
-            </code>{" "}
-            and the start/fail variants. Hit it from your job; failures with
-            log payloads get a plain-English AI explanation in the alert.
-          </p>
-        </SurfaceCard>
+              Live preview. If the schedule field below shows red here, the
+              backend will reject it.
+            </p>
+            <CronPreview
+              scheduleType={scheduleType}
+              scheduleValue={scheduleValue}
+              timezone={timezone}
+            />
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <Eyebrow>Heartbeat preview</Eyebrow>
+            <h3
+              style={{
+                font: "600 1.05rem var(--wc-font-body)",
+                letterSpacing: "-0.02em",
+                margin: ".5rem 0 .8rem",
+              }}
+            >
+              After you create this monitor
+            </h3>
+            <p
+              style={{
+                color: "var(--wc-text-soft)",
+                margin: 0,
+                fontSize: ".88rem",
+              }}
+            >
+              You'll get a ping URL like{" "}
+              <code
+                style={{
+                  fontFamily: "var(--wc-font-code)",
+                  color: "var(--wc-text)",
+                  background: "rgba(4,7,12,.6)",
+                  padding: "2px 6px",
+                  borderRadius: 6,
+                }}
+              >
+                {`POST https://whycron.dev/p/<token>`}
+              </code>{" "}
+              and the start/fail variants. Hit it from your job; failures with
+              log payloads get a plain-English AI explanation in the alert.
+            </p>
+          </SurfaceCard>
+        </div>
       </div>
     </>
   );

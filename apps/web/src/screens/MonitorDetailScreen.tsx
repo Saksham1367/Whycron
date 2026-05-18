@@ -10,6 +10,7 @@ import type { ShellContext } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { config } from "@/lib/config";
 import { fmtDuration, fmtRelative } from "@/lib/format";
+import { formatSchedule } from "@/lib/schedule";
 import type { MonitorDetail } from "@/lib/types";
 
 export function MonitorDetailScreen() {
@@ -98,9 +99,10 @@ export function MonitorDetailScreen() {
               >
                 <StatusBadge status={detail.monitor.status} />
                 <span style={{ color: "var(--wc-text-muted)", fontSize: ".85rem" }}>
-                  {detail.monitor.schedule_type === "cron"
-                    ? detail.monitor.schedule_value
-                    : detail.monitor.schedule_type}{" "}
+                  {formatSchedule(
+                    detail.monitor.schedule_type,
+                    detail.monitor.schedule_value,
+                  )}{" "}
                   ({detail.monitor.timezone})
                 </span>
               </div>
