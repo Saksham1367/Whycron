@@ -123,6 +123,13 @@ export interface AccountUsage {
   ai_explanations_monthly_limit: number; // -1 = unlimited
 }
 
+export interface TermsState {
+  current_version: string;
+  accepted_version: string | null;
+  accepted_at: string | null;
+  is_up_to_date: boolean;
+}
+
 export interface Account {
   organization_id: string;
   organization_name: string;
@@ -135,4 +142,5 @@ export interface Account {
   role: string;
   usage: AccountUsage;
   created_at: string;
+  terms: TermsState;
 }

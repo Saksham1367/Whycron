@@ -8,6 +8,8 @@ import { AuthCallbackScreen } from "@/screens/AuthCallbackScreen";
 import { ChannelsScreen } from "@/screens/ChannelsScreen";
 import { CreateMonitorScreen } from "@/screens/CreateMonitorScreen";
 import { FailuresScreen } from "@/screens/FailuresScreen";
+import { LandingScreen } from "@/screens/LandingScreen";
+import { LegalPage } from "@/screens/LegalPage";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { MonitorDetailScreen } from "@/screens/MonitorDetailScreen";
 import { MonitorsScreen } from "@/screens/MonitorsScreen";
@@ -20,9 +22,18 @@ export function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public marketing + legal pages. The landing page itself
+              redirects authenticated users to /overview, so signed-in
+              visitors never see it. */}
+          <Route path="/" element={<LandingScreen />} />
+          <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/terms" element={<LegalPage doc="terms" />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/auth/callback" element={<AuthCallbackScreen />} />
 
+          {/* Authenticated dashboard. The shell loads the account on
+              mount and gates everything behind the terms modal until
+              the user has accepted the current published version. */}
           <Route
             element={
               <RequireAuth>
@@ -30,13 +41,10 @@ export function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<OverviewScreen />} />
+            <Route path="overview" element={<OverviewScreen />} />
             <Route path="monitors" element={<MonitorsScreen />} />
             <Route path="monitors/new" element={<CreateMonitorScreen />} />
-            <Route
-              path="monitors/:id"
-              element={<MonitorDetailScreen />}
-            />
+            <Route path="monitors/:id" element={<MonitorDetailScreen />} />
             <Route path="failures" element={<FailuresScreen />} />
             <Route path="runs/:id" element={<RunDetailScreen />} />
             <Route path="channels" element={<ChannelsScreen />} />

@@ -18,6 +18,7 @@ import type {
   NotificationChannel,
   Run,
   RunListResponse,
+  TermsState,
 } from "./types";
 
 export class ApiError extends Error {
@@ -206,6 +207,12 @@ export const api = {
 
   // ── Account ─────────────────────────────────────────────────────────────
   getAccount: (): Promise<Account> => request("/api/v1/account"),
+
+  acceptTerms: (version: string): Promise<TermsState> =>
+    request("/api/v1/account/accept-terms", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
 
   // ── Billing ─────────────────────────────────────────────────────────────
   startCheckout: (tier: "pro" | "team" = "pro"): Promise<{ checkout_url: string }> =>

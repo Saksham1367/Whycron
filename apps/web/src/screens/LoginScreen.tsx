@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/Button";
 import { Eyebrow } from "@/components/Eyebrow";
@@ -12,11 +17,17 @@ export function LoginScreen() {
   const { session, signInWithGoogle, signInWithEmail, signUpWithEmail } =
     useAuth();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
-  const [mode, setMode] = useState<Mode>("signin");
+  // The landing-page "Sign up" button links here with ?mode=signup so the
+  // form opens already in signup mode (terms checkbox visible).
+  const [mode, setMode] = useState<Mode>(
+    searchParams.get("mode") === "signup" ? "signup" : "signin",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -30,7 +41,18 @@ export function LoginScreen() {
 
   if (session) return <Navigate to={from} replace />;
 
+  // For signup, the user must explicitly check the T&C box. The backend
+  // also enforces this via a blocking modal on first dashboard load, so
+  // OAuth signups (where this checkbox isn't shown again) are caught
+  // server-side. The checkbox here is the primary, paper-trail
+  // acceptance moment per CONTEXT.md.
+  const signupBlocked = mode === "signup" && !acceptedTerms;
+
   async function onGoogle() {
+    if (signupBlocked) {
+      setError("Tick the Terms & Privacy box before signing up.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -43,6 +65,10 @@ export function LoginScreen() {
 
   async function onEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (signupBlocked) {
+      setError("Tick the Terms & Privacy box before creating an account.");
+      return;
+    }
     setError(null);
     setInfo(null);
     setBusy(true);
@@ -160,6 +186,38 @@ export function LoginScreen() {
               placeholder="••••••••"
             />
           </label>
+          {mode === "signup" && (
+            <label
+              style={{
+                display: "flex",
+                gap: ".55rem",
+                alignItems: "flex-start",
+                color: "var(--wc-text-soft)",
+                fontSize: ".82rem",
+                cursor: "pointer",
+                margin: ".2rem 0",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                style={{ marginTop: ".15rem", flexShrink: 0 }}
+                required
+              />
+              <span>
+                I agree to the{" "}
+                <Link to="/terms" target="_blank" rel="noreferrer">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link to="/privacy" target="_blank" rel="noreferrer">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+          )}
           {error && (
             <p
               style={{
@@ -185,6 +243,7 @@ export function LoginScreen() {
           <Button
             type="submit"
             variant="primary"
+            disabled={busy || signupBlocked}
             style={{ width: "100%", justifyContent: "center" }}
           >
             {busy

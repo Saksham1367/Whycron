@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     slack_client_secret: str = ""
     slack_signing_secret: str = ""
 
+    # ── Legal (Phase 16) ────────────────────────────────────────────────────
+    # Bump this string whenever PRIVACY.md or TERMS.md changes
+    # materially. Users whose ``terms_version_accepted`` doesn't match
+    # this value will be re-prompted to accept on next login.
+    terms_version: str = "2026-05-18-v1"
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

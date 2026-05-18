@@ -8,7 +8,9 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import ForeignKey, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -77,3 +79,18 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     role: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="owner"
     )
+
+    # Terms-of-service acceptance audit trail (Phase 16). When NULL, the
+    # dashboard shows a blocking modal until the user accepts. Updating
+    # the published terms version invalidates prior acceptances — we
+    # compare the stored ``terms_version_accepted`` against the current
+    # ``settings.terms_version`` on every load.
+    terms_version_accepted: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # IP address recorded at the moment of acceptance — legal proof if
+    # an acceptance is later disputed. Truncated to 45 chars to fit IPv6.
+    terms_accepted_ip: Mapped[str | None] = mapped_column(Text, nullable=True)

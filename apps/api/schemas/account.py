@@ -15,6 +15,32 @@ class UsageBlock(BaseModel):
     ai_explanations_monthly_limit: int  # ``-1`` means unlimited
 
 
+class TermsState(BaseModel):
+    """Per-user terms-of-service acceptance state.
+
+    ``current_version`` is the published terms version. ``accepted_version``
+    is whatever the user last accepted (NULL if never). ``is_up_to_date``
+    is True iff the two strings match — the frontend uses this single
+    boolean to decide whether to show the acceptance modal.
+    """
+
+    current_version: str
+    accepted_version: str | None
+    accepted_at: datetime | None
+    is_up_to_date: bool
+
+
+class TermsAcceptIn(BaseModel):
+    """Body for POST /api/v1/account/accept-terms.
+
+    The version the user is accepting is sent explicitly so a stale
+    dashboard can't auto-accept a newer version the user never saw.
+    The backend rejects if the value doesn't match ``settings.terms_version``.
+    """
+
+    version: str
+
+
 class AccountOut(BaseModel):
     organization_id: uuid.UUID
     organization_name: str
@@ -27,3 +53,4 @@ class AccountOut(BaseModel):
     role: str
     usage: UsageBlock
     created_at: datetime
+    terms: TermsState

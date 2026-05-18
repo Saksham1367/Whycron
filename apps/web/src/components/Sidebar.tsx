@@ -9,7 +9,7 @@ interface NavItem {
 }
 
 const WORKSPACE_NAV: NavItem[] = [
-  { id: "overview", label: "Overview", icon: "dashboard", path: "/" },
+  { id: "overview", label: "Overview", icon: "dashboard", path: "/overview" },
   { id: "monitors", label: "Monitors", icon: "timer", path: "/monitors" },
   { id: "failures", label: "Failures", icon: "error", path: "/failures" },
   {
@@ -63,7 +63,7 @@ function SidebarItem({ item }: { item: NavItem }) {
   return (
     <NavLink
       to={item.path}
-      end={item.path === "/"}
+      end={item.path === "/overview"}
       className={({ isActive }) =>
         `wc-nav-item ${isActive ? "wc-nav-item--active" : ""}`
       }
