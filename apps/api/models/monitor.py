@@ -58,6 +58,11 @@ class Monitor(Base, TimestampMixin, SoftDeleteMixin):
     paused: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # When true, this monitor surfaces on the org's public status page
+    # (Phase 14). Default is private; users opt monitors in one by one.
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(Text),

@@ -13,6 +13,7 @@ import { MonitorDetailScreen } from "@/screens/MonitorDetailScreen";
 import { MonitorsScreen } from "@/screens/MonitorsScreen";
 import { OverviewScreen } from "@/screens/OverviewScreen";
 import { RunDetailScreen } from "@/screens/RunDetailScreen";
+import { StatusPageScreen } from "@/screens/StatusPageScreen";
 
 export function App() {
   return (
@@ -41,6 +42,7 @@ export function App() {
             <Route path="channels" element={<ChannelsScreen />} />
             <Route path="account" element={<AccountScreen />} />
             <Route path="api-keys" element={<ApiKeysScreen />} />
+            <Route path="status-page" element={<StatusPageScreen />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

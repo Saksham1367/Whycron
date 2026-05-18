@@ -60,7 +60,12 @@ async def fresh_monitor(
         await s.execute(
             delete(AuditLog).where(AuditLog.organization_id == ctx["org_id"])
         )
-        await s.execute(delete(Run).where(Run.organization_id == ctx["org_id"]))
+        # Delete every run for this monitor, not just runs whose org_id
+        # matches — the scheduler can insert ``missed`` rows whose
+        # organization_id is populated from the live monitor row but in
+        # rare cases differs from what the test cached in ``ctx``. Deleting
+        # by ``monitor_id`` guarantees we don't leave dangling FK pointers.
+        await s.execute(delete(Run).where(Run.monitor_id == ctx["monitor_id"]))
         await s.execute(delete(Monitor).where(Monitor.id == ctx["monitor_id"]))
         await s.execute(
             delete(Organization).where(Organization.id == ctx["org_id"])

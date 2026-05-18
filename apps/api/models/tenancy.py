@@ -41,6 +41,18 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
         JSONB, nullable=False, default=dict, server_default="{}"
     )
 
+    # Public status page (Phase 14). When set, ``GET /status/<slug>`` returns
+    # an HTML page showing the org's public-flagged monitors. NULL means the
+    # org has no status page configured. Globally unique so we can mount it
+    # at a top-level path (and, later, at ``{slug}.status.whycron.com``).
+    status_page_slug: Mapped[str | None] = mapped_column(
+        Text, unique=True, nullable=True
+    )
+    # Optional headline shown above the monitor list on the public page.
+    # Empty string is allowed (renders no headline). Limited to 200 chars
+    # at the schema layer.
+    status_page_headline: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class User(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "users"

@@ -29,6 +29,7 @@ export interface Monitor {
   expected_runtime_seconds: number | null;
   status: MonitorStatus;
   paused: boolean;
+  is_public: boolean;
   tags: string[];
   notification_settings: Record<string, unknown>;
   created_at: string;

@@ -62,6 +62,7 @@ class MonitorUpdate(BaseModel):
     grace_period_seconds: int | None = Field(default=None, ge=0, le=86_400)
     expected_runtime_seconds: int | None = Field(default=None, ge=1)
     paused: bool | None = None
+    is_public: bool | None = None
     tags: list[str] | None = None
     notification_settings: dict[str, object] | None = None
 
@@ -79,6 +80,7 @@ class MonitorOut(BaseModel):
     expected_runtime_seconds: int | None
     status: str
     paused: bool
+    is_public: bool
     tags: list[str]
     notification_settings: dict[str, object]
     created_at: datetime

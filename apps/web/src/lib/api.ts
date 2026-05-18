@@ -130,6 +130,7 @@ export const api = {
       grace_period_seconds: number;
       expected_runtime_seconds: number | null;
       paused: boolean;
+      is_public: boolean;
       tags: string[];
     }>
   ): Promise<Monitor> =>
@@ -244,6 +245,19 @@ export const api = {
 
   listSlackChannels: (): Promise<SlackChannelsResponse> =>
     request("/api/v1/integrations/slack/channels"),
+
+  // ── Status page ─────────────────────────────────────────────────────────
+  getStatusPageConfig: (): Promise<StatusPageConfig> =>
+    request("/api/v1/status-page"),
+
+  updateStatusPageConfig: (body: {
+    slug?: string | null;
+    headline?: string | null;
+  }): Promise<StatusPageConfig> =>
+    request("/api/v1/status-page", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
 
 export type ApiKeyScope =
@@ -285,4 +299,12 @@ export interface SlackChannelOption {
 export interface SlackChannelsResponse {
   team_name: string;
   channels: SlackChannelOption[];
+}
+
+export interface StatusPageConfig {
+  slug: string | null;
+  headline: string | null;
+  public_monitor_count: number;
+  total_monitor_count: number;
+  public_url: string | null;
 }

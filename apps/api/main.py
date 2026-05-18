@@ -31,6 +31,8 @@ from apps.api.routes import (
     monitors,
     ping,
     runs,
+    status as status_route,
+    status_admin,
 )
 
 
@@ -113,6 +115,8 @@ app.include_router(account.router)
 app.include_router(billing.router)
 app.include_router(api_keys.router)
 app.include_router(integrations.router)
+app.include_router(status_route.router)
+app.include_router(status_admin.router)
 
 
 @app.get("/health", tags=["meta"])

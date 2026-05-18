@@ -17,14 +17,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.db import db
-from apps.api.models import AuditLog, Monitor, Run
+from apps.api.models import AuditLog, Monitor, Organization, Run
 from apps.api.routes.auth import require_scope
 from apps.api.schemas.monitor import (
     MonitorCreate,
     MonitorOut,
     MonitorUpdate,
 )
-from apps.api.services import analytics
+from apps.api.services import analytics, status_page
 from apps.api.services.auth import AuthedUser
 from apps.api.services.tier_limits import (
     generate_ping_token,
@@ -287,6 +287,18 @@ async def update_monitor(
         # so the response carries the fresh value instead of trying to
         # lazy-load it during model serialization.
         await session.refresh(monitor)
+
+        # If the public flag changed, invalidate the status-page cache so
+        # the next public hit rebuilds the snapshot immediately.
+        if "is_public" in updates:
+            org = (
+                await session.execute(
+                    select(Organization).where(Organization.id == auth.organization_id)
+                )
+            ).scalar_one_or_none()
+            if org is not None and org.status_page_slug:
+                await status_page.invalidate(org.status_page_slug)
+
         return MonitorOut.model_validate(monitor)
 
 
