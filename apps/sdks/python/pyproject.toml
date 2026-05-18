@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "whycron"
+name = "whycron-sdk"
 version = "0.1.0"
 description = "Official Python client for Whycron — cron job monitoring that tells you why."
 readme = "README.md"

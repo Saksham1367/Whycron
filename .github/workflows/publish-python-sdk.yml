@@ -3,17 +3,14 @@ name: Publish Python SDK
 # Trusted publishing to PyPI via OIDC — no API token needed.
 # Triggered when a git tag of the form ``sdk-py-v0.1.0`` is pushed.
 #
-# One-time PyPI setup (do this before the first release):
-#   1. Sign in at https://pypi.org/ with the Whycron publisher account.
-#   2. Account settings -> Publishing -> Add a new pending publisher.
-#   3. Fill in:
-#        PyPI Project Name:      whycron
+# One-time PyPI setup (already done — left here as a record):
+#        PyPI Project Name:      whycron-sdk
 #        Owner:                  Saksham1367
 #        Repository name:        Whycron
 #        Workflow name:          publish-python-sdk.yml
 #        Environment name:       pypi
-#   4. Save. After the first successful publish, the pending entry becomes
-#      a permanent trusted publisher.
+# The dist name on PyPI is "whycron-sdk" (the bare "whycron" was taken).
+# The import name is still "whycron" — that's the package directory.
 
 on:
   push:
@@ -66,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/whycron/
+      url: https://pypi.org/project/whycron-sdk/
     permissions:
       id-token: write
     steps:

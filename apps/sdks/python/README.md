@@ -3,7 +3,13 @@
 Cron job monitoring that tells you why. This is the official Python SDK.
 
 ```bash
-pip install whycron
+pip install whycron-sdk
+```
+
+The pip-install name is `whycron-sdk` (PyPI), but you import it as `whycron`:
+
+```python
+from whycron import Whycron, monitor
 ```
 
 ## Heartbeat pings
