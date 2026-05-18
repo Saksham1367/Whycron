@@ -60,10 +60,16 @@ async def slack_install(
 ) -> dict[str, str]:
     """Return the Slack authorize URL. Frontend opens it in a top-level
     redirect; Slack will redirect back to ``/slack/callback``."""
-    if not settings.slack_client_id:
+    if not settings.slack_oauth_enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Slack is not configured on this Whycron instance.",
+            detail=(
+                "Slack OAuth is not available on this Whycron instance. "
+                "Use a Slack incoming-webhook URL instead, or upgrade to "
+                "the hosted version at whycron.com."
+                if settings.self_host_mode
+                else "Slack is not configured on this Whycron instance."
+            ),
         )
 
     state = secrets.token_urlsafe(32)

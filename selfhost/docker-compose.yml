@@ -1,0 +1,136 @@
+# Whycron — self-hosted bundle.
+#
+# Bring-your-own credentials for Supabase (auth), Brevo (email) and any
+# webhook integrations. AI failure explanations and the polished Slack
+# OAuth flow are deliberately disabled in this build — they live only
+# on the hosted product at https://whycron.com. See selfhost/README.md.
+#
+# Usage:
+#   cd selfhost
+#   cp .env.example .env   # fill in the required values
+#   docker compose up -d   # first run: builds images and runs migrations
+#   open http://localhost:8080
+#
+# To stop and remove data:
+#   docker compose down -v
+
+# All container ports are bound to localhost by default. Put a reverse
+# proxy (Caddy, Cloudflare Tunnel, etc.) in front when exposing to the
+# public internet.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whycron
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: whycron
+    volumes:
+      - whycron-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whycron -d whycron"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - whycron-redis:/data
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+
+  api:
+    build:
+      context: ..
+      dockerfile: selfhost/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SELF_HOST_MODE: "true"
+      APP_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      DATABASE_URL: postgresql://whycron:${POSTGRES_PASSWORD}@postgres:5432/whycron
+      REDIS_URL: redis://redis:6379/0
+      SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL in .env}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?set SUPABASE_ANON_KEY in .env}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env (Fernet key)}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?set WEBHOOK_SIGNING_SECRET in .env}
+      # Optional: BYO email transport. Leave empty to disable email channels.
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-alerts@whycron.local}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Whycron}
+      # AI / Slack OAuth / Polar are intentionally OFF in self-host even
+      # if these keys are set. See selfhost/README.md for the rationale.
+      ANTHROPIC_API_KEY: ""
+      SLACK_CLIENT_ID: ""
+      SLACK_CLIENT_SECRET: ""
+      POLAR_API_KEY: ""
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: selfhost/Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      SELF_HOST_MODE: "true"
+      APP_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      DATABASE_URL: postgresql://whycron:${POSTGRES_PASSWORD}@postgres:5432/whycron
+      REDIS_URL: redis://redis:6379/0
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-alerts@whycron.local}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Whycron}
+      ANTHROPIC_API_KEY: ""
+      SLACK_CLIENT_ID: ""
+      SLACK_CLIENT_SECRET: ""
+
+  web:
+    build:
+      context: ..
+      dockerfile: selfhost/Dockerfile.web
+      args:
+        # The frontend bundle bakes the API + Supabase URLs at build time.
+        # Edit .env then ``docker compose build web`` after any change.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+        VITE_SENTRY_DSN: ""
+        VITE_POSTHOG_KEY: ""
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+
+volumes:
+  whycron-postgres:
+  whycron-redis:

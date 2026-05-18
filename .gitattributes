@@ -1,0 +1,11 @@
+# Default: let git auto-handle text vs binary detection.
+* text=auto
+
+# Files that must stay LF — running in a Linux Docker container, the
+# CRLF line endings Windows would produce break the shebang interpreter
+# resolution and yaml/dockerfile parsers.
+*.sh           text eol=lf
+Dockerfile     text eol=lf
+Dockerfile.*   text eol=lf
+*.yml          text eol=lf
+*.yaml         text eol=lf

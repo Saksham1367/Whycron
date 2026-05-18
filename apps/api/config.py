@@ -25,6 +25,11 @@ class Settings(BaseSettings):
 
     # ── App ──────────────────────────────────────────────────────────────────
     app_env: AppEnv = "development"
+    # Self-host mode. When true, the API runs in single-org, no-billing,
+    # no-AI mode — exposed to dev / on-prem deployments via Docker. Toggles
+    # off: Anthropic explainer, Slack OAuth UI in the dashboard, Polar
+    # billing UI. See selfhost/README.md.
+    self_host_mode: bool = False
     app_url: str = "http://localhost:8000"
     # Dashboard / SPA origin. The backend builds redirect URLs (OAuth
     # callback, billing checkout success) from this, NOT from ``app_url``,
@@ -97,6 +102,23 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def ai_enabled(self) -> bool:
+        """AI explanations require Anthropic + are explicitly off in
+        self-host mode (the moat lives on the hosted product)."""
+        return not self.self_host_mode and bool(self.anthropic_api_key)
+
+    @property
+    def slack_oauth_enabled(self) -> bool:
+        """Slack OAuth + threaded alerts are SaaS-only. Self-host users
+        can still send to Slack via a plain webhook URL."""
+        return not self.self_host_mode and bool(self.slack_client_id)
+
+    @property
+    def billing_enabled(self) -> bool:
+        """Polar checkout / portal UI is hidden in self-host."""
+        return not self.self_host_mode and bool(self.polar_api_key)
 
 
 @lru_cache(maxsize=1)

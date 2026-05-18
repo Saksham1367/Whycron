@@ -25,7 +25,8 @@ const SLACK_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function ChannelsScreen() {
-  const { onSignOut } = useOutletContext<ShellContext>();
+  const { onSignOut, account } = useOutletContext<ShellContext>();
+  const slackOAuthEnabled = account?.deployment.slack_oauth_enabled ?? true;
   const [searchParams, setSearchParams] = useSearchParams();
   const [channels, setChannels] = useState<NotificationChannel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +43,16 @@ export function ChannelsScreen() {
       .listChannels()
       .then((r) => setChannels(r.items))
       .catch((e: Error) => setError(e.message));
-    api
-      .getSlackInstallation()
-      .then(setSlack)
-      .catch(() => setSlack({ connected: false }));
+    // Slack OAuth lives on the hosted product only — in self-host the
+    // endpoint returns 503 so we skip the lookup entirely.
+    if (slackOAuthEnabled) {
+      api
+        .getSlackInstallation()
+        .then(setSlack)
+        .catch(() => setSlack({ connected: false }));
+    } else {
+      setSlack({ connected: false });
+    }
   }
 
   useEffect(reload, []);
@@ -150,16 +157,18 @@ export function ChannelsScreen() {
         </div>
       )}
 
-      <SlackConnectionCard
-        slack={slack}
-        busy={slackBusy}
-        onConnect={connectSlack}
-        onDisconnect={disconnectSlack}
-      />
+      {slackOAuthEnabled && (
+        <SlackConnectionCard
+          slack={slack}
+          busy={slackBusy}
+          onConnect={connectSlack}
+          onDisconnect={disconnectSlack}
+        />
+      )}
 
       {creating && (
         <CreateChannelForm
-          slackConnected={slack?.connected ?? false}
+          slackConnected={(slack?.connected ?? false) && slackOAuthEnabled}
           onCancel={() => setCreating(false)}
           onCreated={() => {
             setCreating(false);

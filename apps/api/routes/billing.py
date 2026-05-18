@@ -107,6 +107,19 @@ async def start_checkout(
     body: CheckoutCreate,
     auth: AuthedUser = Depends(require_scope("admin")),
 ) -> CheckoutOut:
+    if not settings.billing_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Billing is not available on this Whycron instance. "
+                "Self-host deployments have all features unlocked but "
+                "without paid-tier upgrades. Hosted plans live at "
+                "whycron.com."
+                if settings.self_host_mode
+                else "Billing is not configured on this Whycron instance."
+            ),
+        )
+
     product_id = (
         settings.polar_product_pro_id
         if body.tier == "pro"

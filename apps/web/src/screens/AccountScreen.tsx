@@ -171,7 +171,40 @@ export function AccountScreen() {
 
           <SurfaceCard style={{ gridColumn: "span 2" }}>
             <Eyebrow>Billing</Eyebrow>
-            {account.tier === "free" ? (
+            {!account.deployment.billing_enabled ? (
+              <>
+                <h3
+                  style={{
+                    font: "600 1.15rem var(--wc-font-body)",
+                    letterSpacing: "-0.03em",
+                    margin: ".5rem 0 .6rem",
+                  }}
+                >
+                  Self-hosted — no billing
+                </h3>
+                <p
+                  style={{
+                    color: "var(--wc-text-soft)",
+                    margin: "0 0 1rem",
+                    fontSize: ".9rem",
+                    maxWidth: 560,
+                  }}
+                >
+                  You're running Whycron on your own infrastructure. There's
+                  no subscription to manage here. AI failure explanations are
+                  only available on the hosted version at{" "}
+                  <a
+                    href="https://whycron.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "var(--wc-primary)" }}
+                  >
+                    whycron.com
+                  </a>
+                  .
+                </p>
+              </>
+            ) : account.tier === "free" ? (
               <>
                 <h3
                   style={{

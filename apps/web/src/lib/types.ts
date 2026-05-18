@@ -123,6 +123,13 @@ export interface AccountUsage {
   ai_explanations_monthly_limit: number; // -1 = unlimited
 }
 
+export interface DeploymentFlags {
+  self_host_mode: boolean;
+  ai_enabled: boolean;
+  slack_oauth_enabled: boolean;
+  billing_enabled: boolean;
+}
+
 export interface Account {
   organization_id: string;
   organization_name: string;
@@ -135,4 +142,5 @@ export interface Account {
   role: string;
   usage: AccountUsage;
   created_at: string;
+  deployment: DeploymentFlags;
 }

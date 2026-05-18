@@ -15,6 +15,17 @@ class UsageBlock(BaseModel):
     ai_explanations_monthly_limit: int  # ``-1`` means unlimited
 
 
+class DeploymentFlags(BaseModel):
+    """Runtime flags the frontend needs to gate UI on. Returned with every
+    ``/api/v1/account`` response so the dashboard adapts to the deployment
+    type without an extra round-trip."""
+
+    self_host_mode: bool
+    ai_enabled: bool
+    slack_oauth_enabled: bool
+    billing_enabled: bool
+
+
 class AccountOut(BaseModel):
     organization_id: uuid.UUID
     organization_name: str
@@ -27,3 +38,4 @@ class AccountOut(BaseModel):
     role: str
     usage: UsageBlock
     created_at: datetime
+    deployment: DeploymentFlags

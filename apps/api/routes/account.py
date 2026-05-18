@@ -11,10 +11,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
+from apps.api.config import settings
 from apps.api.db import db
 from apps.api.models import AIExplanation, Monitor, Organization, User
 from apps.api.routes.auth import require_scope
-from apps.api.schemas.account import AccountOut, UsageBlock
+from apps.api.schemas.account import AccountOut, DeploymentFlags, UsageBlock
 from apps.api.services.auth import AuthedUser
 from apps.api.services.tier_limits import (
     ai_explanations_limit_for_tier,
@@ -86,4 +87,10 @@ async def get_account(
             ai_explanations_monthly_limit=ai_explanations_limit_for_tier(org.tier),
         ),
         created_at=org.created_at,
+        deployment=DeploymentFlags(
+            self_host_mode=settings.self_host_mode,
+            ai_enabled=settings.ai_enabled,
+            slack_oauth_enabled=settings.slack_oauth_enabled,
+            billing_enabled=settings.billing_enabled,
+        ),
     )
