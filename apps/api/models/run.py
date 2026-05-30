@@ -133,4 +133,27 @@ class AIExplanation(Base, CreatedAtMixin):
         Text, nullable=True
     )
 
+    # ── Phase 18a: structured patch metadata ─────────────────────────
+    # Categorized fix the LLM proposes for this failure. Drives the
+    # Phase 18b PR opener: only ``code_change`` and ``config_change``
+    # are actionable as a PR; ``infra_change`` / ``manual_fix`` open
+    # an Issue or stay alert-only; ``no_patch`` means "the logs don't
+    # support proposing a specific fix yet — check the dashboard".
+    # NULL for explanations produced by the v1 prompt or by cached/
+    # quota-exhausted stubs.
+    patch_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # File path, service name, or other identifier of the thing the
+    # patch would touch. Free-form text from the LLM, e.g. ``Dockerfile``,
+    # ``terraform/main.tf``, ``crontab``, ``redis service``.
+    patch_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Single-sentence summary of the proposed change. Used as the PR
+    # title in Phase 18b.
+    patch_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'low' | 'medium' | 'high' | NULL — confidence that the patch is
+    # right, independent of the overall explanation confidence (the
+    # LLM may be confident the cause is X but unsure about the fix).
+    patch_confidence: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+
     __table_args__ = (Index("idx_explanations_run", "run_id"),)

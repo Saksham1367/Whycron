@@ -20,6 +20,8 @@ rare in practice.
 """
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,13 +41,21 @@ if TYPE_CHECKING:  # avoid importing anthropic at API import time
 
 log = structlog.get_logger("whycron.ai_explainer")
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 PROMPT_FILE = (
     Path(__file__).resolve().parents[3]
     / "docs"
     / "prompts"
     / f"failure-explanation-{PROMPT_VERSION}.md"
 )
+
+# Whitelisted patch_kind values. Anything else from the LLM is coerced to
+# ``no_patch`` so the downstream PR opener never has to handle freeform
+# strings.
+_VALID_PATCH_KINDS = frozenset(
+    {"code_change", "config_change", "infra_change", "manual_fix", "no_patch"}
+)
+_VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 
 # Pricing for claude-haiku-4-5-20251001, USD per million tokens.
 # TODO(saksham): verify against https://www.anthropic.com/pricing each quarter.
@@ -184,7 +194,7 @@ async def _explain_inner(
     )
 
     raw_text = response.content[0].text
-    parsed = _parse_three_paragraphs(raw_text)
+    parsed = _parse_v2_json(raw_text)
     confidence = grade_confidence(raw_text, user_context)
 
     usage = response.usage
@@ -207,6 +217,10 @@ async def _explain_inner(
         input_tokens=total_input,
         output_tokens=output_tok,
         cost_usd_micro=cost,
+        patch_kind=parsed["patch_kind"],
+        patch_target=parsed["patch_target"] or None,
+        patch_summary=parsed["patch_summary"] or None,
+        patch_confidence=parsed["patch_confidence"],
     )
     session.add(explanation)
     await session.commit()
@@ -274,6 +288,12 @@ async def _persist_cached(
         output_tokens=0,
         cost_usd_micro=0,
         cached_from_signature_hash=signature,
+        # Carry the patch metadata from the cached source so the PR
+        # opener still has structured input on a cache hit.
+        patch_kind=source.patch_kind,
+        patch_target=source.patch_target,
+        patch_summary=source.patch_summary,
+        patch_confidence=source.patch_confidence,
     )
     session.add(explanation)
     await session.commit()
@@ -309,6 +329,11 @@ async def _persist_quota_exhausted(
         input_tokens=0,
         output_tokens=0,
         cost_usd_micro=0,
+        # Quota-exhausted stubs never spawn PRs.
+        patch_kind="no_patch",
+        patch_target=None,
+        patch_summary=None,
+        patch_confidence="low",
     )
     session.add(explanation)
     await session.commit()
@@ -399,11 +424,74 @@ def _build_user_context(
 # ── Parsing + pricing ────────────────────────────────────────────────────────
 
 
-def _parse_three_paragraphs(text: str) -> dict[str, str]:
-    """Split Claude's 3-paragraph output (CONTEXT.md §8.1)."""
+def _parse_v2_json(text: str) -> dict[str, str]:
+    """Parse the v2 prompt's JSON output.
+
+    Tolerant of:
+    - Markdown code fences the model occasionally adds around the JSON
+    - Trailing prose after the closing brace
+    - Missing optional fields (patch_target / patch_summary can be "")
+
+    Coerces invalid ``patch_kind`` / ``patch_confidence`` values into the
+    valid whitelist so downstream code never has to validate again.
+
+    Falls back to a v1-style 3-paragraph parse if the response is not
+    JSON at all (useful for older eval cases or a flaky model).
+    """
+    blob = _extract_json_object(text)
+    if blob is not None:
+        try:
+            data = json.loads(blob)
+            if isinstance(data, dict):
+                return _normalize_v2(data)
+        except json.JSONDecodeError:
+            pass
+
+    # Legacy fallback — model didn't return JSON, salvage what we can.
+    fallback = _parse_three_paragraphs_legacy(text)
+    return {
+        **fallback,
+        "patch_kind": "no_patch",
+        "patch_target": "",
+        "patch_summary": "",
+        "patch_confidence": "low",
+    }
+
+
+_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json_object(text: str) -> str | None:
+    """Find the first ``{ ... }`` JSON object in a string. Returns None if
+    no plausible candidate exists."""
+    match = _JSON_OBJECT_RE.search(text)
+    return match.group(0) if match else None
+
+
+def _normalize_v2(data: dict[str, Any]) -> dict[str, str]:
+    """Coerce every field to its expected type + whitelist values."""
+    patch_kind = str(data.get("patch_kind", "")).strip().lower()
+    if patch_kind not in _VALID_PATCH_KINDS:
+        patch_kind = "no_patch"
+    patch_confidence = str(data.get("patch_confidence", "")).strip().lower()
+    if patch_confidence not in _VALID_CONFIDENCE:
+        patch_confidence = "low"
+
+    return {
+        "root_cause": str(data.get("root_cause", "")).strip() or "(empty response)",
+        "explanation": str(data.get("explanation", "")).strip(),
+        "suggested_fix": str(data.get("suggested_fix", "")).strip(),
+        "patch_kind": patch_kind,
+        "patch_target": str(data.get("patch_target", "")).strip(),
+        "patch_summary": str(data.get("patch_summary", "")).strip(),
+        "patch_confidence": patch_confidence,
+    }
+
+
+def _parse_three_paragraphs_legacy(text: str) -> dict[str, str]:
+    """v1 parser kept for fallback + the eval harness's v1 cases."""
     blocks = [p.strip() for p in text.strip().split("\n\n") if p.strip()]
     if len(blocks) < 3:
-        # Fall back to line-by-line if Claude omitted blank-line separators.
         blocks = [p.strip() for p in text.strip().splitlines() if p.strip()]
     if len(blocks) >= 3:
         return {
@@ -416,6 +504,10 @@ def _parse_three_paragraphs(text: str) -> dict[str, str]:
         "explanation": "",
         "suggested_fix": "",
     }
+
+
+# Backwards-compatible alias — the eval harness imports this name.
+_parse_three_paragraphs = _parse_three_paragraphs_legacy
 
 
 def _compute_cost_micro(

@@ -38,7 +38,8 @@ sys.path.insert(0, str(ROOT))
 
 from apps.api.config import settings  # noqa: E402
 from apps.api.services.ai_explainer import (  # noqa: E402
-    _parse_three_paragraphs,
+    PROMPT_VERSION,
+    _parse_v2_json,
     _system_prompt,
 )
 from apps.api.services.ai_validator import grade_confidence  # noqa: E402
@@ -60,6 +61,9 @@ class CaseResult:
     confidence: str
     raw_output: str
     cost_usd_micro: int
+    # v2 additions — empty strings mean "case did not specify"
+    expected_patch_kind: str
+    actual_patch_kind: str
 
 
 # ── Building the user context (mirrors ai_explainer._build_user_context) ────
@@ -135,7 +139,7 @@ def _compute_cost_micro(
 
 
 def score_case(case: dict, raw_output: str) -> CaseResult:
-    parsed = _parse_three_paragraphs(raw_output)
+    parsed = _parse_v2_json(raw_output)
     combined = " ".join(
         [
             parsed["root_cause"],
@@ -160,6 +164,17 @@ def score_case(case: dict, raw_output: str) -> CaseResult:
 
     found_forbidden = [c for c in must_not_contain if c in combined]
 
+    # v2 patch-kind gate. If the case specifies an expected patch_kind,
+    # the LLM's pick must match exactly — that's the whole point of the
+    # structured output.
+    expected_patch_kind = criteria.get("expected_patch_kind", "")
+    actual_patch_kind = parsed.get("patch_kind", "")
+    if expected_patch_kind and actual_patch_kind != expected_patch_kind:
+        missing_required.append(
+            f"patch_kind expected={expected_patch_kind!r} "
+            f"got={actual_patch_kind!r}"
+        )
+
     confidence = grade_confidence(raw_output, build_user_context(case))
 
     return CaseResult(
@@ -171,6 +186,8 @@ def score_case(case: dict, raw_output: str) -> CaseResult:
         confidence=confidence,
         raw_output=raw_output,
         cost_usd_micro=0,  # set by caller
+        expected_patch_kind=expected_patch_kind,
+        actual_patch_kind=actual_patch_kind,
     )
 
 
@@ -212,7 +229,7 @@ async def run(
     results: list[CaseResult] = []
     total_cost_micro = 0
 
-    print(f"Running {len(cases)} eval cases against prompt v1...\n")
+    print(f"Running {len(cases)} eval cases against prompt {PROMPT_VERSION}...\n")
     for case in cases:
         try:
             raw, cost = await explain(case, client)
@@ -228,6 +245,11 @@ async def run(
                     confidence="low",
                     raw_output=f"API error: {exc!r}",
                     cost_usd_micro=0,
+                    expected_patch_kind=(
+                        case.get("evaluation_criteria", {})
+                        .get("expected_patch_kind", "")
+                    ),
+                    actual_patch_kind="",
                 )
             )
             continue
@@ -238,9 +260,15 @@ async def run(
         results.append(result)
 
         marker = "PASS" if result.passed else "FAIL"
+        patch_cell = (
+            f"{result.actual_patch_kind or '-':14s}"
+            if result.expected_patch_kind == result.actual_patch_kind
+            else f"{result.actual_patch_kind or '-':>14}/{result.expected_patch_kind}"
+        )
         print(
             f"  {result.case_id:40s}  {marker}  "
             f"conf={result.confidence:6s}  "
+            f"patch={patch_cell}  "
             f"${result.cost_usd_micro / 1_000_000:.4f}"
         )
         if not result.passed:
